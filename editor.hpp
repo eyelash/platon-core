@@ -1,11 +1,13 @@
 #pragma once
 
+#include "piece_table.hpp"
 #include "buffer.hpp"
 #include "json.hpp"
 
 class Editor {
-	Buffer buffer;
+	PieceTable buffer;
 	Newlines newlines;
+	std::size_t cursor = 0;
 public:
 	Editor(const char* path): buffer(path), newlines(buffer.begin(), buffer.end()) {}
 	std::size_t get_total_lines() const {
@@ -24,10 +26,34 @@ public:
 						index0 = newlines.get_index(i);
 						index1 = newlines.get_index(i + 1);
 					}
-					writer.write_member("text").write_string(buffer.begin() + index0, buffer.begin() + index1);
+					writer.write_member("text").write_string(buffer.get_iterator(index0), buffer.get_iterator(index1));
+					writer.write_member("cursors").write_array([&](JSONArrayWriter& writer) {
+						if (index0 <= cursor && cursor < index1) {
+							writer.write_element().write_number(cursor - index0);
+						}
+					});
 				});
 			}
 		});
 		return json.c_str();
+	}
+	void insert(const char* text) {
+		for (const char* c = text; *c; ++c) {
+			buffer.insert(cursor, *c);
+			newlines.insert(cursor);
+			++cursor;
+		}
+	}
+	void backspace() {
+		if (cursor > 0) {
+			buffer.remove(cursor - 1);
+			newlines.remove(cursor - 1);
+			--cursor;
+		}
+	}
+	void set_cursor(std::size_t column, std::size_t row) {
+		row = std::min(row, get_total_lines() - 1);
+		cursor = newlines.get_index(row) + column;
+		cursor = std::min(cursor, newlines.get_index(row + 1) - 1);
 	}
 };

@@ -172,7 +172,7 @@ public:
 	}
 	void remove(std::size_t index) {
 		for (std::size_t i = 0; i < pieces.size(); ++i) {
-			if (index <= pieces[i].get_size()) {
+			if (index < pieces[i].get_size()) {
 				if (!pieces[i].remove(index)) {
 					PiecePtr left = pieces[i].split_left(index);
 					PiecePtr right = pieces[i].split_right(index + 1);

@@ -20,3 +20,15 @@ size_t platon_editor_get_total_lines(PlatonEditor* editor) {
 const char* platon_editor_render(PlatonEditor* editor, size_t first_line, size_t last_line) {
 	return editor->render(first_line, last_line);
 }
+
+void platon_editor_insert(PlatonEditor* editor, const char* text) {
+	editor->insert(text);
+}
+
+void platon_editor_backspace(PlatonEditor* editor) {
+	editor->backspace();
+}
+
+void platon_editor_set_cursor(PlatonEditor* editor, size_t column, size_t row) {
+	editor->set_cursor(column, row);
+}

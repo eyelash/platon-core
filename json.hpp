@@ -10,7 +10,7 @@ class JSONWriter {
 	}
 public:
 	JSONWriter(std::string& string): string(string) {}
-	void write_string(const char* first, const char* last) {
+	template <class I> void write_string(I first, I last) {
 		string.push_back('"');
 		for (; first != last; ++first) {
 			const char c = *first;

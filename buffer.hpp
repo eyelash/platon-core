@@ -34,6 +34,24 @@ public:
 			index -= lines[l];
 		}
 	}
+	void insert(std::size_t index) {
+		for (std::size_t l = 0; l < lines.size(); ++l) {
+			if (lines[l] > index) {
+				++lines[l];
+				return;
+			}
+			index -= lines[l];
+		}
+	}
+	void remove(std::size_t index) {
+		for (std::size_t l = 0; l < lines.size(); ++l) {
+			if (lines[l] > index) {
+				--lines[l];
+				return;
+			}
+			index -= lines[l];
+		}
+	}
 };
 
 class Buffer {
