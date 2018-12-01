@@ -6,6 +6,7 @@
 #include <fcntl.h>
 #include <sys/stat.h>
 #include <sys/mman.h>
+#include <time.h>
 #endif
 #include <cstddef>
 
@@ -35,7 +36,7 @@ public:
 	std::size_t get_size() const {
 		return size;
 	}
-	char operator[](std::size_t i) const {
+	char operator [](std::size_t i) const {
 		return map[i];
 	}
 	const char* begin() const {
@@ -43,5 +44,17 @@ public:
 	}
 	const char* end() const {
 		return map + size;
+	}
+};
+
+class Time {
+public:
+	static double get_monotonic() {
+		#ifdef _WIN32
+		#else
+		struct timespec ts;
+		clock_gettime(CLOCK_MONOTONIC, &ts);
+		return ts.tv_sec + ts.tv_nsec / 1e9;
+		#endif
 	}
 };
