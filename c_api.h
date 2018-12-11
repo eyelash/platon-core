@@ -15,6 +15,7 @@ const char* platon_editor_render(PlatonEditor* editor, size_t first_line, size_t
 void platon_editor_insert(PlatonEditor* editor, const char* text);
 void platon_editor_backspace(PlatonEditor* editor);
 void platon_editor_set_cursor(PlatonEditor* editor, size_t column, size_t row);
+void platon_editor_toggle_cursor(PlatonEditor* editor, size_t column, size_t row);
 
 #ifdef __cplusplus
 }

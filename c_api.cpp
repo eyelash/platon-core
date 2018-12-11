@@ -32,3 +32,7 @@ void platon_editor_backspace(PlatonEditor* editor) {
 void platon_editor_set_cursor(PlatonEditor* editor, size_t column, size_t row) {
 	editor->set_cursor(column, row);
 }
+
+void platon_editor_toggle_cursor(PlatonEditor* editor, size_t column, size_t row) {
+	editor->toggle_cursor(column, row);
+}
