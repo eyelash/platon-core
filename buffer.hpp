@@ -34,9 +34,13 @@ public:
 			index -= lines[l];
 		}
 	}
-	void insert(std::size_t index) {
+	void insert(std::size_t index, char c) {
 		for (std::size_t l = 0; l < lines.size(); ++l) {
 			if (lines[l] > index) {
+				if (c == '\n') {
+					lines.insert(lines.begin() + l + 1, lines[l] - index);
+					lines[l] = index;
+				}
 				++lines[l];
 				return;
 			}
@@ -47,6 +51,10 @@ public:
 		for (std::size_t l = 0; l < lines.size(); ++l) {
 			if (lines[l] > index) {
 				--lines[l];
+				if (index == lines[l]) {
+					lines[l] += lines[l + 1];
+					lines.erase(lines.begin() + l + 1);
+				}
 				return;
 			}
 			index -= lines[l];

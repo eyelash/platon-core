@@ -91,7 +91,7 @@ public:
 			for (Selection& selection: selections) {
 				selection += offset;
 				buffer.insert(selection.last, *c);
-				newlines.insert(selection.last);
+				newlines.insert(selection.last, *c);
 				selection += 1;
 				++offset;
 			}
