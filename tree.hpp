@@ -183,19 +183,56 @@ template <class I> class Tree {
 	}
 
 	// get
-	template <class C> static T get(std::size_t depth, Leaf* node, I sum, C comp) {
+	template <class C> static T get(std::size_t depth, Leaf* node, I& sum, C comp) {
 		const std::size_t i = get_index(depth, node, sum, comp);
 		return node->children[i];
 	}
-	template <class C> static T get(std::size_t depth, INode* node, I sum, C comp) {
+	template <class C> static T get(std::size_t depth, INode* node, I& sum, C comp) {
 		const std::size_t i = get_index(depth, node, sum, comp);
 		return get(depth - 1, node->children[i], sum, comp);
 	}
-	template <class C> static T get(std::size_t depth, void* node, I sum, C comp) {
+	template <class C> static T get(std::size_t depth, void* node, I& sum, C comp) {
 		if (depth > 0)
 			return get(depth, static_cast<INode*>(node), sum, comp);
 		else
 			return get(depth, static_cast<Leaf*>(node), sum, comp);
+	}
+
+	// append
+	static void* append(std::size_t depth, Leaf* node, const T& t) {
+		node->children.insert(t);
+		if (node->children.get_size() == Leaf::SIZE) {
+			Leaf* next_node = new Leaf();
+			node->children.split(next_node->children);
+			recompute_info(depth, node);
+			recompute_info(depth, next_node);
+			return next_node;
+		}
+		//recompute_info(depth, node);
+		node->info = node->info + I(t);
+		return nullptr;
+	}
+	static void* append(std::size_t depth, INode* node, const T& t) {
+		void* new_child = append(depth - 1, node->children.get(), t);
+		if (new_child) {
+			node->children.insert(new_child);
+			if (node->children.get_size() == INode::SIZE) {
+				INode* next_node = new INode();
+				node->children.split(next_node->children);
+				recompute_info(depth, node);
+				recompute_info(depth, next_node);
+				return next_node;
+			}
+		}
+		//recompute_info(depth, node);
+		node->info = node->info + I(t);
+		return nullptr;
+	}
+	static void* append(std::size_t depth, void* node, const T& t) {
+		if (depth > 0)
+			return append(depth, static_cast<INode*>(node), t);
+		else
+			return append(depth, static_cast<Leaf*>(node), t);
 	}
 
 	// insert
@@ -303,10 +340,36 @@ public:
 		return get_info(depth, root);
 	}
 	template <class C> T get(C comp) const {
-		return get(depth, root, I(), comp);
+		I sum;
+		return get(depth, root, sum, comp);
+	}
+	template <class C> I get_sum(C comp) const {
+		if (!(comp < get_info())) {
+			return get_info();
+		}
+		I sum;
+		get(depth, root, sum, comp);
+		return sum;
+	}
+	void append(const T& t) {
+		void* new_child = append(depth, root, t);
+		if (new_child) {
+			++depth;
+			INode* new_root = new INode();
+			new_root->children.insert(root);
+			new_root->children.insert(new_child);
+			recompute_info(depth, new_root);
+			root = new_root;
+		}
 	}
 	template <class C> void insert(C comp, const T& t) {
-		void* new_child = insert(depth, root, I(), comp, t);
+		void* new_child;
+		if (!(comp < get_info())) {
+			new_child = append(depth, root, t);
+		}
+		else {
+			new_child = insert(depth, root, I(), comp, t);
+		}
 		if (new_child) {
 			++depth;
 			INode* new_root = new INode();

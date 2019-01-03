@@ -1,9 +1,87 @@
 #pragma once
 
 #include "piece_table.hpp"
-#include "buffer.hpp"
+#include "tree.hpp"
 #include "json.hpp"
 #include <vector>
+
+class Breaks {
+	class Info {
+	public:
+		std::size_t chars;
+		std::size_t lines;
+		constexpr Info(std::size_t chars, std::size_t lines): chars(chars), lines(lines) {}
+		using T = std::size_t;
+		constexpr Info(): chars(0), lines(0) {}
+		constexpr Info(std::size_t chars): chars(chars), lines(1) {}
+		constexpr Info operator +(const Info& info) {
+			return Info(chars + info.chars, lines + info.lines);
+		}
+	};
+	class CharComp {
+		std::size_t chars;
+	public:
+		constexpr CharComp(std::size_t chars): chars(chars) {}
+		constexpr bool operator <(const Info& info) const {
+			return chars < info.chars;
+		}
+	};
+	class LineComp {
+		std::size_t line;
+	public:
+		constexpr LineComp(std::size_t line): line(line) {}
+		constexpr bool operator <(const Info& info) const {
+			return line < info.lines;
+		}
+	};
+	Tree<Info> tree;
+public:
+	template <class I> Breaks(I first, I last) {
+		std::size_t index = 0;
+		for (; first != last; ++first) {
+			++index;
+			if (*first == '\n') {
+				tree.append(index);
+				index = 0;
+			}
+		}
+	}
+	std::size_t get_total_lines() const {
+		return tree.get_info().lines;
+	}
+	std::size_t get_index(std::size_t line) const {
+		return tree.get_sum(LineComp(line)).chars;
+	}
+	std::size_t get_line(std::size_t index) const {
+		return tree.get_sum(CharComp(index)).lines;
+	}
+	void insert(std::size_t index, char c) {
+		const Info sum = tree.get_sum(CharComp(index));
+		const std::size_t line = tree.get(CharComp(index));
+		tree.remove(CharComp(index));
+		if (c == '\n') {
+			tree.insert(CharComp(sum.chars), line - (index - sum.chars));
+			tree.insert(CharComp(sum.chars), (index - sum.chars) + 1);
+		}
+		else {
+			tree.insert(CharComp(sum.chars), line + 1);
+		}
+	}
+	void remove(std::size_t index) {
+		const Info sum = tree.get_sum(CharComp(index));
+		std::size_t line = tree.get(CharComp(index));
+		tree.remove(CharComp(index));
+		--line;
+		if (index - sum.chars == line) {
+			line += tree.get(CharComp(sum.chars));
+			tree.remove(CharComp(sum.chars));
+			tree.insert(CharComp(sum.chars), line);
+		}
+		else {
+			tree.insert(CharComp(sum.chars), line);
+		}
+	}
+};
 
 struct Selection {
 	std::size_t first;
@@ -49,7 +127,7 @@ public:
 
 class Editor {
 	PieceTable buffer;
-	Newlines newlines;
+	Breaks newlines;
 	Selections selections;
 	void render_selections(JSONObjectWriter& writer, std::size_t index0, std::size_t index1) const {
 		writer.write_member("cursors").write_array([&](JSONArrayWriter& writer) {
