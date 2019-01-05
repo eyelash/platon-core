@@ -112,7 +112,7 @@ public:
 	void toggle_cursor(std::size_t cursor) {
 		std::size_t i;
 		for (i = 0; i < size(); ++i) {
-			Selection& selection = operator [](i);
+			const Selection& selection = operator [](i);
 			if (cursor == selection.last) {
 				erase(begin() + i);
 				return;
@@ -122,6 +122,15 @@ public:
 			}
 		}
 		emplace(begin() + i, cursor);
+	}
+	void collapse() {
+		for (std::size_t i = 1; i < size(); ++i) {
+			if (operator [](i - 1).last >= operator [](i).first) {
+				operator [](i - 1).last = operator [](i).last;
+				erase(begin() + i);
+				--i;
+			}
+		}
 	}
 };
 
@@ -187,6 +196,7 @@ public:
 			newlines.remove(selection.last);
 			++offset;
 		}
+		selections.collapse();
 	}
 	void set_cursor(std::size_t column, std::size_t row) {
 		row = std::min(row, get_total_lines() - 1);
