@@ -3,6 +3,7 @@
 #include "piece_table.hpp"
 #include "tree.hpp"
 #include "json.hpp"
+#include "syntax_highlighting.hpp"
 #include <vector>
 
 class Breaks {
@@ -209,5 +210,12 @@ public:
 		std::size_t cursor = newlines.get_index(row) + column;
 		cursor = std::min(cursor, newlines.get_index(row + 1) - 1);
 		selections.toggle_cursor(cursor);
+	}
+	const char* get_theme() const {
+		static std::string json;
+		json.clear();
+		JSONWriter writer(json);
+		default_theme.write(writer);
+		return json.c_str();
 	}
 };

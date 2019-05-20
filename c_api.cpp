@@ -36,3 +36,7 @@ void platon_editor_set_cursor(PlatonEditor* editor, size_t column, size_t row) {
 void platon_editor_toggle_cursor(PlatonEditor* editor, size_t column, size_t row) {
 	editor->toggle_cursor(column, row);
 }
+
+const char* platon_editor_get_theme(const PlatonEditor* editor) {
+	return editor->get_theme();
+}
