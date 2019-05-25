@@ -138,6 +138,7 @@ public:
 class Editor {
 	PieceTable buffer;
 	Breaks newlines;
+	Language language;
 	Selections selections;
 	void render_selections(JSONObjectWriter& writer, std::size_t index0, std::size_t index1) const {
 		writer.write_member("cursors").write_array([&](JSONArrayWriter& writer) {
@@ -149,7 +150,7 @@ class Editor {
 		});
 	}
 public:
-	Editor(const char* path): buffer(path), newlines(buffer.begin(), buffer.end()) {}
+	Editor(const char* path): buffer(path), newlines(buffer.begin(), buffer.end()), language(buffer) {}
 	std::size_t get_total_lines() const {
 		return newlines.get_total_lines();
 	}
@@ -168,6 +169,7 @@ public:
 					}
 					writer.write_member("text").write_string(buffer.get_iterator(index0), buffer.get_iterator(index1));
 					render_selections(writer, index0, index1);
+					language.highlight(writer.write_member("spans"), index0, index1);
 				});
 			}
 		});
@@ -184,6 +186,7 @@ public:
 				++offset;
 			}
 		}
+		language.update(buffer);
 	}
 	void backspace() {
 		std::size_t offset = 0;
@@ -198,6 +201,7 @@ public:
 			++offset;
 		}
 		selections.collapse();
+		language.update(buffer);
 	}
 	void set_cursor(std::size_t column, std::size_t row) {
 		row = std::min(row, get_total_lines() - 1);

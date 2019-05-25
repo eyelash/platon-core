@@ -146,6 +146,7 @@ public:
 			}
 			index -= piece.get_size();
 		}
+		return '\0';
 	}
 	void insert(std::size_t index, char c) {
 		for (std::size_t i = 0; i < pieces.size(); ++i) {
@@ -191,12 +192,12 @@ public:
 		}
 	}
 	class Iterator {
-		const PieceTable& piece_table;
+		const PieceTable* piece_table;
 		std::size_t index;
 	public:
-		Iterator(const PieceTable& piece_table, std::size_t index): piece_table(piece_table), index(index) {}
+		Iterator(const PieceTable* piece_table, std::size_t index): piece_table(piece_table), index(index) {}
 		char operator *() const {
-			return piece_table[index];
+			return (*piece_table)[index];
 		}
 		bool operator !=(const Iterator& iterator) const {
 			return index != iterator.index;
@@ -205,9 +206,12 @@ public:
 			++index;
 			return *this;
 		}
+		std::size_t get_index() const {
+			return index;
+		}
 	};
 	Iterator get_iterator(std::size_t index) const {
-		return Iterator(*this, index);
+		return Iterator(this, index);
 	}
 	Iterator begin() const {
 		return get_iterator(0);
