@@ -3,6 +3,8 @@
 #include "os.hpp"
 #include "tree.hpp"
 #include <vector>
+#include <string>
+#include <cstdio>
 
 class Piece {
 public:
@@ -37,7 +39,6 @@ class MutablePiece: public Piece {
 	static constexpr std::size_t SIZE = 8;
 	StaticVector<char, SIZE> data;
 public:
-	MutablePiece() {}
 	MutablePiece(char c) {
 		data.insert(c);
 	}
@@ -92,6 +93,9 @@ public:
 	std::size_t get_size() const {
 		return last - first;
 	}
+	const char* get_data() const {
+		return first;
+	}
 	char operator [](std::size_t index) const {
 		return *(first + index);
 	}
@@ -125,7 +129,7 @@ class PieceTable {
 	std::vector<PiecePtr> pieces;
 public:
 	PieceTable() {
-		MutablePiece* piece = new MutablePiece();
+		MutablePiece* piece = new MutablePiece('\n');
 		pieces.emplace_back(piece, piece->begin(), piece->end());
 	}
 	PieceTable(const char* path) {
@@ -218,5 +222,20 @@ public:
 	}
 	Iterator end() const {
 		return get_iterator(get_size());
+	}
+	void save(const char* path) {
+		std::string temp_path(path);
+		while (true) {
+			temp_path.push_back('~');
+			std::FILE* file = std::fopen(temp_path.c_str(), "wbx");
+			if (file) {
+				for (const PiecePtr& piece: pieces) {
+					std::fwrite(piece.get_data(), 1, piece.get_size(), file);
+				}
+				std::fclose(file);
+				std::rename(temp_path.c_str(), path);
+				return;
+			}
+		}
 	}
 };

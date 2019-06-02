@@ -37,14 +37,16 @@ class Breaks {
 	};
 	Tree<Info> tree;
 public:
-	template <class I> Breaks(I first, I last) {
+	template <class E> Breaks(const E& buffer) {
+		auto iterator = buffer.begin();
 		std::size_t index = 0;
-		for (; first != last; ++first) {
+		while (*iterator != '\0') {
 			++index;
-			if (*first == '\n') {
+			if (*iterator == '\n') {
 				tree.append(index);
 				index = 0;
 			}
+			++iterator;
 		}
 	}
 	std::size_t get_total_lines() const {
@@ -150,7 +152,8 @@ class Editor {
 		});
 	}
 public:
-	Editor(const char* path): buffer(path), newlines(buffer.begin(), buffer.end()), language(buffer) {}
+	Editor(): newlines(buffer), language(buffer) {}
+	Editor(const char* path): buffer(path), newlines(buffer), language(buffer) {}
 	std::size_t get_total_lines() const {
 		return newlines.get_total_lines();
 	}
@@ -241,5 +244,8 @@ public:
 		JSONWriter writer(json);
 		default_theme.write(writer);
 		return json.c_str();
+	}
+	void save(const char* path) {
+		buffer.save(path);
 	}
 };

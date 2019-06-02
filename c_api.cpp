@@ -2,10 +2,15 @@
 #include "editor.hpp"
 
 struct PlatonEditor: Editor {
+	PlatonEditor() {}
 	PlatonEditor(const char* path): Editor(path) {}
 };
 
-PlatonEditor* platon_editor_new(const char* path) {
+PlatonEditor* platon_editor_new() {
+	return new PlatonEditor();
+}
+
+PlatonEditor* platon_editor_new_from_file(const char* path) {
 	return new PlatonEditor(path);
 }
 
@@ -47,4 +52,8 @@ void platon_editor_move_right(PlatonEditor* editor) {
 
 const char* platon_editor_get_theme(const PlatonEditor* editor) {
 	return editor->get_theme();
+}
+
+void platon_editor_save(PlatonEditor* editor, const char* path) {
+	editor->save(path);
 }
