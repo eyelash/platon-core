@@ -16,6 +16,8 @@ void platon_editor_insert(PlatonEditor* editor, const char* text);
 void platon_editor_backspace(PlatonEditor* editor);
 void platon_editor_set_cursor(PlatonEditor* editor, size_t column, size_t row);
 void platon_editor_toggle_cursor(PlatonEditor* editor, size_t column, size_t row);
+void platon_editor_move_left(PlatonEditor* editor);
+void platon_editor_move_right(PlatonEditor* editor);
 const char* platon_editor_get_theme(const PlatonEditor* editor);
 
 #ifdef __cplusplus

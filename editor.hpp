@@ -215,6 +215,26 @@ public:
 		cursor = std::min(cursor, newlines.get_index(row + 1) - 1);
 		selections.toggle_cursor(cursor);
 	}
+	void move_left() {
+		for (Selection& selection: selections) {
+			if (selection.last == 0) {
+				continue;
+			}
+			selection -= 1;
+		}
+		selections.collapse();
+	}
+	void move_right() {
+		const std::size_t last = buffer.get_size() - 1;
+		for (Selection& selection: selections) {
+			assert(selection.last <= last);
+			if (selection.last == last) {
+				break;
+			}
+			selection += 1;
+		}
+		selections.collapse();
+	}
 	const char* get_theme() const {
 		static std::string json;
 		json.clear();
