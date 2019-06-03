@@ -33,6 +33,9 @@ public:
 		}
 		string.push_back('0' + (n % 10));
 	}
+	void write_boolean(bool b) {
+		string.append(b ? "true" : "false");
+	}
 	template <class F> void write_object(F f) {
 		string.push_back('{');
 		ObjectWriter object_writer(*this);

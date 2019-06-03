@@ -39,17 +39,37 @@ public:
 	}
 };
 
+enum class Weight: int {
+	NORMAL = 400,
+	BOLD = 700
+};
+
+class Style {
+public:
+	Color color;
+	Weight weight;
+	bool italic;
+	constexpr Style(const Color& color, Weight weight = Weight::NORMAL, bool italic = false): color(color), weight(weight), italic(italic) {}
+	void write(JSONWriter& writer) const {
+		writer.write_object([&](JSONObjectWriter& writer) {
+			color.write(writer.write_member("color"));
+			writer.write_member("weight").write_number(static_cast<int>(weight));
+			writer.write_member("italic").write_boolean(italic);
+		});
+	}
+};
+
 struct Theme {
 	Color background;
 	Color cursor;
-	Color text[5];
+	Style styles[5];
 	void write(JSONWriter& writer) const {
 		writer.write_object([&](JSONObjectWriter& writer) {
 			background.write(writer.write_member("background"));
 			cursor.write(writer.write_member("cursor"));
-			writer.write_member("text").write_array([&](JSONArrayWriter& writer) {
-				for (const Color& color: text) {
-					color.write(writer.write_element());
+			writer.write_member("styles").write_array([&](JSONArrayWriter& writer) {
+				for (const Style& style: styles) {
+					style.write(writer.write_element());
 				}
 			});
 		});
@@ -60,11 +80,11 @@ constexpr Theme default_theme = {
 	Color::hsv(0, 0, 100), // background
 	Color::hsv(210, 100, 100), // cursor
 	{
-		Color::hsv(0, 0, 20), // text
-		Color::hsv(0, 0, 60), // comments
-		Color::hsv(270, 80, 80), // keywords
-		Color::hsv(210, 80, 80), // types
-		Color::hsv(150, 80, 80) // literals
+		Style(Color::hsv(0, 0, 20)), // text
+		Style(Color::hsv(0, 0, 60), Weight::NORMAL, true), // comments
+		Style(Color::hsv(270, 80, 80), Weight::BOLD), // keywords
+		Style(Color::hsv(210, 80, 80), Weight::BOLD), // types
+		Style(Color::hsv(150, 80, 80)) // literals
 	}
 };
 
