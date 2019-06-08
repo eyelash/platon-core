@@ -62,11 +62,15 @@ public:
 struct Theme {
 	Color background;
 	Color cursor;
+	Style number;
+	Style number_active;
 	Style styles[5];
 	void write(JSONWriter& writer) const {
 		writer.write_object([&](JSONObjectWriter& writer) {
 			background.write(writer.write_member("background"));
 			cursor.write(writer.write_member("cursor"));
+			number.write(writer.write_member("number"));
+			number_active.write(writer.write_member("number_active"));
 			writer.write_member("styles").write_array([&](JSONArrayWriter& writer) {
 				for (const Style& style: styles) {
 					style.write(writer.write_element());
@@ -78,7 +82,9 @@ struct Theme {
 
 constexpr Theme default_theme = {
 	Color::hsv(0, 0, 100), // background
-	Color::hsv(210, 100, 100), // cursor
+	Color::hsv(0, 0, 20), // cursor
+	Style(Color::hsv(0, 0, 60)), // number
+	Style(Color::hsv(0, 0, 20)), // number_active
 	{
 		Style(Color::hsv(0, 0, 20)), // text
 		Style(Color::hsv(0, 0, 60), Weight::NORMAL, true), // comments

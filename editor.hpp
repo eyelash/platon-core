@@ -171,8 +171,9 @@ public:
 						index1 = newlines.get_index(i + 1);
 					}
 					writer.write_member("text").write_string(buffer.get_iterator(index0), buffer.get_iterator(index1));
-					render_selections(writer, index0, index1);
+					writer.write_member("number").write_number(i + 1);
 					language.highlight(writer.write_member("spans"), index0, index1);
+					render_selections(writer, index0, index1);
 				});
 			}
 		});
