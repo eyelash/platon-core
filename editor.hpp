@@ -101,6 +101,12 @@ struct Selection {
 		last -= n;
 		return *this;
 	}
+	std::size_t min() const {
+		return std::min(first, last);
+	}
+	std::size_t max() const {
+		return std::max(first, last);
+	}
 };
 
 class Selections: public std::vector<Selection> {
@@ -116,24 +122,17 @@ public:
 		std::size_t i;
 		for (i = 0; i < size(); ++i) {
 			const Selection& selection = operator [](i);
-			if (cursor == selection.last) {
-				erase(begin() + i);
-				return;
-			}
-			if (cursor < selection.last) {
-				break;
+			if (selection.max() >= cursor) {
+				if (selection.min() <= cursor) {
+					erase(begin() + i);
+					return;
+				}
+				else {
+					break;
+				}
 			}
 		}
 		emplace(begin() + i, cursor);
-	}
-	void collapse() {
-		for (std::size_t i = 1; i < size(); ++i) {
-			if (operator [](i - 1).last >= operator [](i).first) {
-				operator [](i - 1).last = operator [](i).last;
-				erase(begin() + i);
-				--i;
-			}
-		}
 	}
 };
 
@@ -143,6 +142,16 @@ class Editor {
 	Language language;
 	Selections selections;
 	void render_selections(JSONObjectWriter& writer, std::size_t index0, std::size_t index1) const {
+		writer.write_member("selections").write_array([&](JSONArrayWriter& writer) {
+			for (const Selection& selection: selections) {
+				if (selection.max() > index0 && selection.min() < index1) {
+					writer.write_element().write_array([&](JSONArrayWriter& writer) {
+						writer.write_element().write_number(std::max(selection.min(), index0) - index0);
+						writer.write_element().write_number(std::min(selection.max(), index1) - index0);
+					});
+				}
+			}
+		});
 		writer.write_member("cursors").write_array([&](JSONArrayWriter& writer) {
 			for (const Selection& selection: selections) {
 				if (selection.last >= index0 && selection.last < index1) {
@@ -180,10 +189,22 @@ public:
 		return json.c_str();
 	}
 	void insert(const char* text) {
-		for (const char* c = text; *c; ++c) {
-			std::size_t offset = 0;
-			for (Selection& selection: selections) {
-				selection += offset;
+		std::size_t offset = 0;
+		for (Selection& selection: selections) {
+			selection -= offset;
+			if (selection.first != selection.last) {
+				for (std::size_t i = selection.min(); i < selection.max(); ++i) {
+					buffer.remove(selection.min());
+					newlines.remove(selection.min());
+					++offset;
+				}
+				selection.first = selection.last = selection.min();
+			}
+		}
+		offset = 0;
+		for (Selection& selection: selections) {
+			selection += offset;
+			for (const char* c = text; *c; ++c) {
 				buffer.insert(selection.last, *c);
 				newlines.insert(selection.last, *c);
 				selection += 1;
@@ -195,16 +216,31 @@ public:
 	void backspace() {
 		std::size_t offset = 0;
 		for (Selection& selection: selections) {
-			if (selection.last == 0) {
-				continue;
-			}
 			selection -= offset;
-			selection -= 1;
-			buffer.remove(selection.last);
-			newlines.remove(selection.last);
-			++offset;
+			if (selection.first == selection.last) {
+				if (selection.last > 0) {
+					selection.first = selection.last -= 1;
+					buffer.remove(selection.last);
+					newlines.remove(selection.last);
+					++offset;
+				}
+			}
+			else {
+				for (std::size_t i = selection.min(); i < selection.max(); ++i) {
+					buffer.remove(selection.min());
+					newlines.remove(selection.min());
+					++offset;
+				}
+				selection.first = selection.last = selection.min();
+			}
 		}
-		selections.collapse();
+		// collapse selections
+		for (std::size_t i = 1; i < selections.size(); ++i) {
+			if (selections[i-1].last == selections[i].last) {
+				selections.erase(selections.begin() + i);
+				--i;
+			}
+		}
 		language.update(buffer);
 	}
 	void set_cursor(std::size_t column, std::size_t row) {
@@ -219,25 +255,60 @@ public:
 		cursor = std::min(cursor, newlines.get_index(row + 1) - 1);
 		selections.toggle_cursor(cursor);
 	}
-	void move_left() {
+	void move_left(bool extend_selection = false) {
 		for (Selection& selection: selections) {
-			if (selection.last == 0) {
-				continue;
+			if (extend_selection) {
+				if (selection.last > 0) {
+					selection.last -= 1;
+				}
 			}
-			selection -= 1;
+			else {
+				if (selection.first == selection.last) {
+					if (selection.last > 0) {
+						selection.first = selection.last -= 1;
+					}
+				}
+				else {
+					selection.first = selection.last = selection.min();
+				}
+			}
 		}
-		selections.collapse();
+		// collapse selections
+		for (std::size_t i = 1; i < selections.size(); ++i) {
+			if (selections[i].last == selections[i-1].last || selections[i].last < selections[i-1].first) {
+				selections[i-1] = Selection(selections[i].first, selections[i-1].last);
+				selections.erase(selections.begin() + i);
+				--i;
+			}
+		}
 	}
-	void move_right() {
+	void move_right(bool extend_selection = false) {
 		const std::size_t last = buffer.get_size() - 1;
 		for (Selection& selection: selections) {
-			assert(selection.last <= last);
-			if (selection.last == last) {
-				break;
+			if (extend_selection) {
+				if (selection.last < last) {
+					selection.last += 1;
+				}
 			}
-			selection += 1;
+			else {
+				if (selection.first == selection.last) {
+					if (selection.last < last) {
+						selection.first = selection.last += 1;
+					}
+				}
+				else {
+					selection.first = selection.last = selection.max();
+				}
+			}
 		}
-		selections.collapse();
+		// collapse selections
+		for (std::size_t i = 1; i < selections.size(); ++i) {
+			if (selections[i-1].last == selections[i].last || selections[i-1].last > selections[i].first) {
+				selections[i-1] = Selection(selections[i-1].first, selections[i].last);
+				selections.erase(selections.begin() + i);
+				--i;
+			}
+		}
 	}
 	const char* get_theme() const {
 		static std::string json;

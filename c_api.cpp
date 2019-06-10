@@ -42,12 +42,12 @@ void platon_editor_toggle_cursor(PlatonEditor* editor, size_t column, size_t row
 	editor->toggle_cursor(column, row);
 }
 
-void platon_editor_move_left(PlatonEditor* editor) {
-	editor->move_left();
+void platon_editor_move_left(PlatonEditor* editor, int extend_selection) {
+	editor->move_left(extend_selection);
 }
 
-void platon_editor_move_right(PlatonEditor* editor) {
-	editor->move_right();
+void platon_editor_move_right(PlatonEditor* editor, int extend_selection) {
+	editor->move_right(extend_selection);
 }
 
 const char* platon_editor_get_theme(const PlatonEditor* editor) {
