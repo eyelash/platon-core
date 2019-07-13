@@ -105,32 +105,40 @@ public:
 	Span(std::size_t first, std::size_t last, int theme_index): first(first), last(last), theme_index(theme_index) {}
 };
 
-class Spans {
-	std::vector<Span> spans;
+template <class I> class MatchContext {
+	I position;
+	std::vector<Span>& spans;
+	I max_position;
 public:
+	constexpr MatchContext(const I& position, std::vector<Span>& spans): position(position), spans(spans), max_position(position) {}
+	char get_char() const {
+		return *position;
+	}
+	std::size_t get_index() const {
+		return position.get_index();
+	}
+	MatchContext& operator ++() {
+		++position;
+		if (position.get_index() > max_position.get_index()) {
+			max_position = position;
+		}
+		return *this;
+	}
+	class Savepoint {
+	public:
+		I position;
+		std::size_t spans_size;
+		constexpr Savepoint(const I& position, std::size_t spans_size): position(position), spans_size(spans_size) {}
+	};
+	Savepoint save() const {
+		return Savepoint(position, spans.size());
+	}
+	void restore(const Savepoint& savepoint) {
+		position = savepoint.position;
+		spans.erase(spans.begin() + savepoint.spans_size, spans.end());
+	}
 	void add_span(std::size_t first, std::size_t last, int theme_index) {
 		spans.emplace_back(first, last, theme_index);
-	}
-	std::size_t save() const {
-		return spans.size();
-	}
-	void restore(std::size_t savepoint) {
-		spans.erase(spans.begin() + savepoint, spans.end());
-	}
-	std::size_t size() const {
-		return spans.size();
-	}
-	const Span& operator [](std::size_t i) const {
-		return spans[i];
-	}
-	auto begin() const {
-		return spans.begin();
-	}
-	auto end() const {
-		return spans.end();
-	}
-	void clear() {
-		spans.clear();
 	}
 };
 
@@ -138,9 +146,9 @@ class Char {
 	char c;
 public:
 	constexpr Char(char c): c(c) {}
-	template <class I> bool match(I& i, Spans& spans) const {
-		if (*i == c) {
-			++i;
+	template <class I> bool match(MatchContext<I>& context) const {
+		if (context.get_char() == c) {
+			++context;
 			return true;
 		}
 		return false;
@@ -152,9 +160,10 @@ class Range {
 	char last;
 public:
 	constexpr Range(char first, char last): first(first), last(last) {}
-	template <class I> bool match(I& i, Spans& spans) const {
-		if (*i != '\0' && *i >= first && *i <= last) {
-			++i;
+	template <class I> bool match(MatchContext<I>& context) const {
+		const char c = context.get_char();
+		if (c != '\0' && c >= first && c <= last) {
+			++context;
 			return true;
 		}
 		return false;
@@ -163,11 +172,11 @@ public:
 
 class AnyChar {
 public:
-	template <class I> bool match(I& i, Spans& spans) const {
-		if (*i == '\0') {
+	template <class I> bool match(MatchContext<I>& context) const {
+		if (context.get_char() == '\0') {
 			return false;
 		}
-		++i;
+		++context;
 		return true;
 	}
 };
@@ -176,14 +185,14 @@ class String {
 	const char* string;
 public:
 	constexpr String(const char* string): string(string) {}
-	template <class I> bool match(I& i, Spans& spans) const {
-		I copy = i;
+	template <class I> bool match(MatchContext<I>& context) const {
+		auto savepoint = context.save();
 		for (const char* s = string; *s != '\0'; ++s) {
-			if (*s != *i) {
-				i = copy;
+			if (*s != context.get_char()) {
+				context.restore(savepoint);
 				return false;
 			}
-			++i;
+			++context;
 		}
 		return true;
 	}
@@ -210,7 +219,7 @@ public:
 template <class... T> class Sequence;
 template <> class Sequence<> {
 public:
-	template <class I> bool match(I& i, Spans& spans) const {
+	template <class I> bool match(MatchContext<I>& context) const {
 		return true;
 	}
 };
@@ -219,15 +228,13 @@ template <class T0, class... T> class Sequence<T0, T...> {
 	Sequence<T...> sequence;
 public:
 	constexpr Sequence(const T0& t0, const T&... t): t0(t0), sequence(t...) {}
-	template <class I> bool match(I& i, Spans& spans) const {
-		I copy = i;
-		std::size_t savepoint = spans.save();
-		if (!t0.match(i, spans)) {
+	template <class I> bool match(MatchContext<I>& context) const {
+		auto savepoint = context.save();
+		if (!t0.match(context)) {
 			return false;
 		}
-		if (!sequence.match(i, spans)) {
-			i = copy;
-			spans.restore(savepoint);
+		if (!sequence.match(context)) {
+			context.restore(savepoint);
 			return false;
 		}
 		return true;
@@ -238,7 +245,7 @@ template <class... T> Sequence(const T&...) -> Sequence<T...>;
 template <class... T> class Choice;
 template <> class Choice<> {
 public:
-	template <class I> bool match(I& i, Spans& spans) const {
+	template <class I> bool match(MatchContext<I>& context) const {
 		return false;
 	}
 };
@@ -247,11 +254,11 @@ template <class T0, class... T> class Choice<T0, T...> {
 	Choice<T...> choice;
 public:
 	constexpr Choice(const T0& t0, const T&... t): t0(t0), choice(t...) {}
-	template <class I> bool match(I& i, Spans& spans) const {
-		if (t0.match(i, spans)) {
+	template <class I> bool match(MatchContext<I>& context) const {
+		if (t0.match(context)) {
 			return true;
 		}
-		return choice.match(i, spans);
+		return choice.match(context);
 	}
 };
 template <class... T> Choice(const T&...) -> Choice<T...>;
@@ -260,8 +267,8 @@ template <class T> class Repetition {
 	T t;
 public:
 	constexpr Repetition(const T& t): t(t) {}
-	template <class I> bool match(I& i, Spans& spans) const {
-		while (t.match(i, spans));
+	template <class I> bool match(MatchContext<I>& context) const {
+		while (t.match(context));
 		return true;
 	}
 };
@@ -270,8 +277,8 @@ template <class T> class Optional {
 	T t;
 public:
 	constexpr Optional(const T& t): t(t) {}
-	template <class I> bool match(I& i, Spans& spans) const {
-		t.match(i, spans);
+	template <class I> bool match(MatchContext<I>& context) const {
+		t.match(context);
 		return true;
 	}
 };
@@ -280,12 +287,10 @@ template <class T> class Not {
 	T t;
 public:
 	constexpr Not(const T& t): t(t) {}
-	template <class I> bool match(I& i, Spans& spans) const {
-		I start = i;
-		std::size_t savepoint = spans.save();
-		if (t.match(i, spans)) {
-			i = start;
-			spans.restore(savepoint);
+	template <class I> bool match(MatchContext<I>& context) const {
+		auto savepoint = context.save();
+		if (t.match(context)) {
+			context.restore(savepoint);
 			return false;
 		}
 		return true;
@@ -296,15 +301,13 @@ template <class T> class But {
 	T t;
 public:
 	constexpr But(const T& t): t(t) {}
-	template <class I> bool match(I& i, Spans& spans) const {
-		I start = i;
-		std::size_t savepoint = spans.save();
-		if (t.match(i, spans)) {
-			i = start;
-			spans.restore(savepoint);
+	template <class I> bool match(MatchContext<I>& context) const {
+		auto savepoint = context.save();
+		if (t.match(context)) {
+			context.restore(savepoint);
 			return false;
 		}
-		return AnyChar().match(i, spans);
+		return AnyChar().match(context);
 	}
 };
 
@@ -313,10 +316,10 @@ template <class T> class Highlight {
 	int theme_index;
 public:
 	constexpr Highlight(const T& t, int theme_index): t(t), theme_index(theme_index) {}
-	template <class I> bool match(I& i, Spans& spans) const {
-		I start = i;
-		if (t.match(i, spans)) {
-			spans.add_span(start.get_index(), i.get_index(), theme_index);
+	template <class I> bool match(MatchContext<I>& context) const {
+		const std::size_t start_index = context.get_index();
+		if (t.match(context)) {
+			context.add_span(start_index, context.get_index(), theme_index);
 			return true;
 		}
 		return false;
@@ -396,17 +399,17 @@ auto syntax = Choice(
 );
 
 class Language {
-	Spans spans;
+	std::vector<Span> spans;
 public:
 	template <class E> Language(const E& buffer) {
 		update(buffer);
 	}
 	template <class E> void update(const E& buffer) {
 		spans.clear();
-		auto iterator = buffer.begin();
-		while (*iterator != '\0') {
-			if (!syntax.match(iterator, spans)) {
-				++iterator;
+		MatchContext context(buffer.begin(), spans);
+		while (context.get_char() != '\0') {
+			if (!syntax.match(context)) {
+				++context;
 			}
 		}
 	}
