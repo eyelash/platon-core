@@ -161,12 +161,12 @@ class Editor {
 		});
 	}
 public:
-	Editor(): newlines(buffer), language(buffer) {}
-	Editor(const char* path): buffer(path), newlines(buffer), language(buffer) {}
+	Editor(): newlines(buffer) {}
+	Editor(const char* path): buffer(path), newlines(buffer) {}
 	std::size_t get_total_lines() const {
 		return newlines.get_total_lines();
 	}
-	const char* render(std::size_t first_line, std::size_t last_line) const {
+	const char* render(std::size_t first_line, std::size_t last_line) {
 		static std::string json;
 		json.clear();
 		JSONWriter writer(json);
@@ -181,7 +181,7 @@ public:
 					}
 					writer.write_member("text").write_string(buffer.get_iterator(index0), buffer.get_iterator(index1));
 					writer.write_member("number").write_number(i + 1);
-					language.highlight(writer.write_member("spans"), index0, index1);
+					language.highlight(buffer, writer.write_member("spans"), index0, index1);
 					render_selections(writer, index0, index1);
 				});
 			}
@@ -193,6 +193,7 @@ public:
 		for (Selection& selection: selections) {
 			selection -= offset;
 			if (selection.first != selection.last) {
+				language.invalidate(selection.min());
 				for (std::size_t i = selection.min(); i < selection.max(); ++i) {
 					buffer.remove(selection.min());
 					newlines.remove(selection.min());
@@ -204,6 +205,7 @@ public:
 		offset = 0;
 		for (Selection& selection: selections) {
 			selection += offset;
+			language.invalidate(selection.last);
 			for (const char* c = text; *c; ++c) {
 				buffer.insert(selection.last, *c);
 				newlines.insert(selection.last, *c);
@@ -211,7 +213,6 @@ public:
 				++offset;
 			}
 		}
-		language.update(buffer);
 	}
 	void backspace() {
 		std::size_t offset = 0;
@@ -220,12 +221,14 @@ public:
 			if (selection.first == selection.last) {
 				if (selection.last > 0) {
 					selection.first = selection.last -= 1;
+					language.invalidate(selection.last);
 					buffer.remove(selection.last);
 					newlines.remove(selection.last);
 					++offset;
 				}
 			}
 			else {
+				language.invalidate(selection.min());
 				for (std::size_t i = selection.min(); i < selection.max(); ++i) {
 					buffer.remove(selection.min());
 					newlines.remove(selection.min());
@@ -241,7 +244,6 @@ public:
 				--i;
 			}
 		}
-		language.update(buffer);
 	}
 	void set_cursor(std::size_t column, std::size_t row) {
 		row = std::min(row, get_total_lines() - 1);

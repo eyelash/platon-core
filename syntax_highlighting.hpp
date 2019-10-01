@@ -3,6 +3,7 @@
 #include "json.hpp"
 #include <utility>
 #include <vector>
+#include <algorithm>
 
 class Color {
 	static constexpr Color hue(float h) {
@@ -101,16 +102,18 @@ class Span {
 public:
 	std::size_t first;
 	std::size_t last;
+	std::size_t match_start;
+	std::size_t match_max;
 	int theme_index;
-	Span(std::size_t first, std::size_t last, int theme_index): first(first), last(last), theme_index(theme_index) {}
+	constexpr Span(std::size_t first, std::size_t last, int theme_index): first(first), last(last), match_start(0), match_max(0), theme_index(theme_index) {}
 };
 
 template <class I> class MatchContext {
 	I position;
+	std::size_t max_index;
 	std::vector<Span>& spans;
-	I max_position;
 public:
-	constexpr MatchContext(const I& position, std::vector<Span>& spans): position(position), spans(spans), max_position(position) {}
+	constexpr MatchContext(const I& position, std::size_t max_index, std::vector<Span>& spans): position(position), max_index(max_index), spans(spans) {}
 	char get_char() const {
 		return *position;
 	}
@@ -119,8 +122,8 @@ public:
 	}
 	MatchContext& operator ++() {
 		++position;
-		if (position.get_index() > max_position.get_index()) {
-			max_position = position;
+		if (position.get_index() > max_index) {
+			max_index = position.get_index();
 		}
 		return *this;
 	}
@@ -139,6 +142,9 @@ public:
 	}
 	void add_span(std::size_t first, std::size_t last, int theme_index) {
 		spans.emplace_back(first, last, theme_index);
+	}
+	std::size_t get_max_index() const {
+		return max_index;
 	}
 };
 
@@ -186,7 +192,7 @@ class String {
 public:
 	constexpr String(const char* string): string(string) {}
 	template <class I> bool match(MatchContext<I>& context) const {
-		auto savepoint = context.save();
+		const auto savepoint = context.save();
 		for (const char* s = string; *s != '\0'; ++s) {
 			if (*s != context.get_char()) {
 				context.restore(savepoint);
@@ -229,7 +235,7 @@ template <class T0, class... T> class Sequence<T0, T...> {
 public:
 	constexpr Sequence(const T0& t0, const T&... t): t0(t0), sequence(t...) {}
 	template <class I> bool match(MatchContext<I>& context) const {
-		auto savepoint = context.save();
+		const auto savepoint = context.save();
 		if (!t0.match(context)) {
 			return false;
 		}
@@ -288,7 +294,7 @@ template <class T> class Not {
 public:
 	constexpr Not(const T& t): t(t) {}
 	template <class I> bool match(MatchContext<I>& context) const {
-		auto savepoint = context.save();
+		const auto savepoint = context.save();
 		if (t.match(context)) {
 			context.restore(savepoint);
 			return false;
@@ -302,7 +308,7 @@ template <class T> class But {
 public:
 	constexpr But(const T& t): t(t) {}
 	template <class I> bool match(MatchContext<I>& context) const {
-		auto savepoint = context.save();
+		const auto savepoint = context.save();
 		if (t.match(context)) {
 			context.restore(savepoint);
 			return false;
@@ -401,19 +407,31 @@ auto syntax = Choice(
 class Language {
 	std::vector<Span> spans;
 public:
-	template <class E> Language(const E& buffer) {
-		update(buffer);
+	void invalidate(std::size_t index) {
+		auto iterator = std::lower_bound(spans.begin(), spans.end(), index, [](const Span& span, std::size_t index) {
+			return span.match_max < index;
+		});
+		spans.erase(iterator, spans.end());
 	}
-	template <class E> void update(const E& buffer) {
-		spans.clear();
-		MatchContext context(buffer.begin(), spans);
-		while (context.get_char() != '\0') {
-			if (!syntax.match(context)) {
+	template <class E> void update(const E& buffer, std::size_t max_index) {
+		const std::size_t match_start = spans.empty() ? 0 : spans.back().match_start;
+		const std::size_t match_max = spans.empty() ? 0 : spans.back().match_max;
+		MatchContext context(buffer.get_iterator(match_start), match_max, spans);
+		while (context.get_char() != '\0' && context.get_index() < max_index) {
+			const std::size_t previous_size = spans.size();
+			if (syntax.match(context)) {
+				for (std::size_t i = previous_size; i < spans.size(); ++i) {
+					spans[i].match_start = context.get_index();
+					spans[i].match_max = context.get_max_index();
+				}
+			}
+			else {
 				++context;
 			}
 		}
 	}
-	void highlight(JSONWriter& writer, std::size_t index0, std::size_t index1) const {
+	template <class E> void highlight(const E& buffer, JSONWriter& writer, std::size_t index0, std::size_t index1) {
+		update(buffer, index1);
 		writer.write_array([&](JSONArrayWriter& writer) {
 			for (auto& span: spans) {
 				if (span.last > index0 && span.first < index1) {
