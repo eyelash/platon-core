@@ -433,14 +433,19 @@ public:
 	template <class E> void highlight(const E& buffer, JSONWriter& writer, std::size_t index0, std::size_t index1) {
 		update(buffer, index1);
 		writer.write_array([&](JSONArrayWriter& writer) {
-			for (auto& span: spans) {
-				if (span.last > index0 && span.first < index1) {
-					writer.write_element().write_array([&](JSONArrayWriter& writer) {
-						writer.write_element().write_number(std::max(span.first, index0) - index0);
-						writer.write_element().write_number(std::min(span.last, index1) - index0);
-						writer.write_element().write_number(span.theme_index);
-					});
+			auto i = std::upper_bound(spans.begin(), spans.end(), index0, [](std::size_t index0, const Span& span) {
+				return index0 < span.last;
+			});
+			for (; i != spans.end(); ++i) {
+				const Span& span = *i;
+				if (span.first >= index1) {
+					break;
 				}
+				writer.write_element().write_array([&](JSONArrayWriter& writer) {
+					writer.write_element().write_number(std::max(span.first, index0) - index0);
+					writer.write_element().write_number(std::min(span.last, index1) - index0);
+					writer.write_element().write_number(span.theme_index);
+				});
 			}
 		});
 	}
