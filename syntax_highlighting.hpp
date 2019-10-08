@@ -4,6 +4,7 @@
 #include <utility>
 #include <vector>
 #include <algorithm>
+#include <memory>
 
 class Color {
 	static constexpr Color hue(float h) {
@@ -152,7 +153,7 @@ class Char {
 	char c;
 public:
 	constexpr Char(char c): c(c) {}
-	template <class I> bool match(MatchContext<I>& context) const {
+	template <class I> bool match(I& context) const {
 		if (context.get_char() == c) {
 			++context;
 			return true;
@@ -166,7 +167,7 @@ class Range {
 	char last;
 public:
 	constexpr Range(char first, char last): first(first), last(last) {}
-	template <class I> bool match(MatchContext<I>& context) const {
+	template <class I> bool match(I& context) const {
 		const char c = context.get_char();
 		if (c != '\0' && c >= first && c <= last) {
 			++context;
@@ -178,7 +179,7 @@ public:
 
 class AnyChar {
 public:
-	template <class I> bool match(MatchContext<I>& context) const {
+	template <class I> bool match(I& context) const {
 		if (context.get_char() == '\0') {
 			return false;
 		}
@@ -191,7 +192,7 @@ class String {
 	const char* string;
 public:
 	constexpr String(const char* string): string(string) {}
-	template <class I> bool match(MatchContext<I>& context) const {
+	template <class I> bool match(I& context) const {
 		const auto savepoint = context.save();
 		for (const char* s = string; *s != '\0'; ++s) {
 			if (*s != context.get_char()) {
@@ -202,30 +203,35 @@ public:
 		}
 		return true;
 	}
-	bool operator <(const String& s) const {
-		const char* lhs = string;
-		const char* rhs = s.string;
-		while (*lhs == *rhs && *lhs != '\0') {
-			++lhs;
-			++rhs;
+};
+
+class CaseInsensitiveString {
+	const char* string;
+	static constexpr char to_lower(char c) {
+		if (c >= 'A' && c <= 'Z') {
+			return c - 'A' + 'a';
 		}
-		return *lhs < *rhs;
+		return c;
 	}
-	bool operator ==(const String& s) const {
-		const char* lhs = string;
-		const char* rhs = s.string;
-		while (*lhs == *rhs && *lhs != '\0') {
-			++lhs;
-			++rhs;
+public:
+	constexpr CaseInsensitiveString(const char* string): string(string) {}
+	template <class I> bool match(I& context) const {
+		const auto savepoint = context.save();
+		for (const char* s = string; *s != '\0'; ++s) {
+			if (to_lower(*s) != to_lower(context.get_char())) {
+				context.restore(savepoint);
+				return false;
+			}
+			++context;
 		}
-		return *lhs == *rhs;
+		return true;
 	}
 };
 
 template <class... T> class Sequence;
 template <> class Sequence<> {
 public:
-	template <class I> bool match(MatchContext<I>& context) const {
+	template <class I> bool match(I& context) const {
 		return true;
 	}
 };
@@ -234,7 +240,7 @@ template <class T0, class... T> class Sequence<T0, T...> {
 	Sequence<T...> sequence;
 public:
 	constexpr Sequence(const T0& t0, const T&... t): t0(t0), sequence(t...) {}
-	template <class I> bool match(MatchContext<I>& context) const {
+	template <class I> bool match(I& context) const {
 		const auto savepoint = context.save();
 		if (!t0.match(context)) {
 			return false;
@@ -251,7 +257,7 @@ template <class... T> Sequence(const T&...) -> Sequence<T...>;
 template <class... T> class Choice;
 template <> class Choice<> {
 public:
-	template <class I> bool match(MatchContext<I>& context) const {
+	template <class I> bool match(I& context) const {
 		return false;
 	}
 };
@@ -260,7 +266,7 @@ template <class T0, class... T> class Choice<T0, T...> {
 	Choice<T...> choice;
 public:
 	constexpr Choice(const T0& t0, const T&... t): t0(t0), choice(t...) {}
-	template <class I> bool match(MatchContext<I>& context) const {
+	template <class I> bool match(I& context) const {
 		if (t0.match(context)) {
 			return true;
 		}
@@ -273,7 +279,7 @@ template <class T> class Repetition {
 	T t;
 public:
 	constexpr Repetition(const T& t): t(t) {}
-	template <class I> bool match(MatchContext<I>& context) const {
+	template <class I> bool match(I& context) const {
 		while (t.match(context));
 		return true;
 	}
@@ -283,7 +289,7 @@ template <class T> class Optional {
 	T t;
 public:
 	constexpr Optional(const T& t): t(t) {}
-	template <class I> bool match(MatchContext<I>& context) const {
+	template <class I> bool match(I& context) const {
 		t.match(context);
 		return true;
 	}
@@ -293,7 +299,7 @@ template <class T> class Not {
 	T t;
 public:
 	constexpr Not(const T& t): t(t) {}
-	template <class I> bool match(MatchContext<I>& context) const {
+	template <class I> bool match(I& context) const {
 		const auto savepoint = context.save();
 		if (t.match(context)) {
 			context.restore(savepoint);
@@ -307,13 +313,23 @@ template <class T> class But {
 	T t;
 public:
 	constexpr But(const T& t): t(t) {}
-	template <class I> bool match(MatchContext<I>& context) const {
+	template <class I> bool match(I& context) const {
 		const auto savepoint = context.save();
 		if (t.match(context)) {
 			context.restore(savepoint);
 			return false;
 		}
 		return AnyChar().match(context);
+	}
+};
+
+class End {
+public:
+	template <class I> bool match(I& context) const {
+		if (context.get_char() == '\0') {
+			return true;
+		}
+		return false;
 	}
 };
 
@@ -332,7 +348,7 @@ public:
 	}
 };
 
-template <class T, class... A> auto keywords(const T& t, A&&... args) {
+template <class T, class... A> constexpr auto keywords(const T& t, A&&... args) {
 	return Sequence(Choice(String(std::forward<A>(args))...), Not(t));
 }
 
@@ -395,7 +411,7 @@ constexpr auto c_ident_char = Choice(c_ident_start, Range('0', '9'));
 constexpr auto c_ident = Sequence(c_ident_start, Repetition(c_ident_char));
 constexpr auto c_whitespace = Choice(Char(' '), Char('\t'));
 
-auto syntax = Choice(
+auto c_syntax = Choice(
 	Highlight(c_comment, 1),
 	Highlight(Choice(c_string, c_character, c_number_hex, c_number), 4),
 	Highlight(keywords(c_ident_char, "if", "else", "for", "while", "do", "break", "continue", "switch", "case", "default", "return", "goto", "typedef", "struct", "enum", "union"), 2), // keywords
@@ -404,16 +420,34 @@ auto syntax = Choice(
 	c_ident
 );
 
-class Language {
+template <class E> class LanguageInterface {
+	using I = decltype(std::declval<E>().get_iterator(0));
+public:
+	virtual ~LanguageInterface() = default;
+	virtual void invalidate(std::size_t index) = 0;
+	virtual void highlight(const E& buffer, JSONWriter& writer, std::size_t index0, std::size_t index1) = 0;
+};
+
+template <class E> class NoLanguage: public LanguageInterface<E> {
+public:
+	void invalidate(std::size_t index) override {}
+	void highlight(const E& buffer, JSONWriter& writer, std::size_t index0, std::size_t index1) override {
+		writer.write_array([](JSONArrayWriter& writer) {});
+	}
+};
+
+template <class E, class T> class LanguageImplementation: public LanguageInterface<E> {
+	T syntax;
 	std::vector<Span> spans;
 public:
-	void invalidate(std::size_t index) {
+	LanguageImplementation(const T& syntax): syntax(syntax) {}
+	void invalidate(std::size_t index) override {
 		auto iterator = std::lower_bound(spans.begin(), spans.end(), index, [](const Span& span, std::size_t index) {
 			return span.match_max < index;
 		});
 		spans.erase(iterator, spans.end());
 	}
-	template <class E> void update(const E& buffer, std::size_t max_index) {
+	void update(const E& buffer, std::size_t max_index) {
 		const std::size_t match_start = spans.empty() ? 0 : spans.back().match_start;
 		const std::size_t match_max = spans.empty() ? 0 : spans.back().match_max;
 		MatchContext context(buffer.get_iterator(match_start), match_max, spans);
@@ -430,7 +464,7 @@ public:
 			}
 		}
 	}
-	template <class E> void highlight(const E& buffer, JSONWriter& writer, std::size_t index0, std::size_t index1) {
+	void highlight(const E& buffer, JSONWriter& writer, std::size_t index0, std::size_t index1) override {
 		update(buffer, index1);
 		writer.write_array([&](JSONArrayWriter& writer) {
 			auto i = std::upper_bound(spans.begin(), spans.end(), index0, [](std::size_t index0, const Span& span) {
@@ -450,3 +484,38 @@ public:
 		});
 	}
 };
+
+template <class T> bool match_string(const T& t, const char* string) {
+	class SimpleContext {
+		const char* position;
+	public:
+		constexpr SimpleContext(const char* position): position(position) {}
+		char get_char() const {
+			return *position;
+		}
+		SimpleContext& operator ++() {
+			++position;
+			return *this;
+		}
+		const char* save() const {
+			return position;
+		}
+		void restore(const char* savepoint) {
+			position = savepoint;
+		}
+	};
+	SimpleContext context(string);
+	return t.match(context);
+}
+
+constexpr auto file_ending(const char* ending) {
+	const auto e = Sequence(Char('.'), CaseInsensitiveString(ending), End());
+	return Sequence(Repetition(But(e)), e);
+}
+
+template <class E> std::unique_ptr<LanguageInterface<E>> get_language(const E& buffer, const char* file_name) {
+	if (match_string(file_ending("c"), file_name)) {
+		return std::make_unique<LanguageImplementation<E, decltype(c_syntax)>>(c_syntax);
+	}
+	return std::make_unique<NoLanguage<E>>();
+}

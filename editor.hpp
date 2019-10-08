@@ -139,7 +139,7 @@ public:
 class Editor {
 	PieceTable buffer;
 	Breaks newlines;
-	Language language;
+	std::unique_ptr<LanguageInterface<PieceTable>> language;
 	Selections selections;
 	void render_selections(JSONObjectWriter& writer, std::size_t index0, std::size_t index1) const {
 		writer.write_member("selections").write_array([&](JSONArrayWriter& writer) {
@@ -160,9 +160,18 @@ class Editor {
 			}
 		});
 	}
+	static const char* get_file_name(const char* path) {
+		const char* file_name = path;
+		for (const char* i = path; *i != '\0'; ++i) {
+			if (is_path_separator(*i)) {
+				file_name = i + 1;
+			}
+		}
+		return file_name;
+	}
 public:
-	Editor(): newlines(buffer) {}
-	Editor(const char* path): buffer(path), newlines(buffer) {}
+	Editor(): newlines(buffer), language(std::make_unique<NoLanguage<PieceTable>>()) {}
+	Editor(const char* path): buffer(path), newlines(buffer), language(get_language(buffer, get_file_name(path))) {}
 	std::size_t get_total_lines() const {
 		return newlines.get_total_lines();
 	}
@@ -181,7 +190,7 @@ public:
 					}
 					writer.write_member("text").write_string(buffer.get_iterator(index0), buffer.get_iterator(index1));
 					writer.write_member("number").write_number(i + 1);
-					language.highlight(buffer, writer.write_member("spans"), index0, index1);
+					language->highlight(buffer, writer.write_member("spans"), index0, index1);
 					render_selections(writer, index0, index1);
 				});
 			}
@@ -193,7 +202,7 @@ public:
 		for (Selection& selection: selections) {
 			selection -= offset;
 			if (selection.first != selection.last) {
-				language.invalidate(selection.min());
+				language->invalidate(selection.min());
 				for (std::size_t i = selection.min(); i < selection.max(); ++i) {
 					buffer.remove(selection.min());
 					newlines.remove(selection.min());
@@ -205,7 +214,7 @@ public:
 		offset = 0;
 		for (Selection& selection: selections) {
 			selection += offset;
-			language.invalidate(selection.last);
+			language->invalidate(selection.last);
 			for (const char* c = text; *c; ++c) {
 				buffer.insert(selection.last, *c);
 				newlines.insert(selection.last, *c);
@@ -221,14 +230,14 @@ public:
 			if (selection.first == selection.last) {
 				if (selection.last > 0) {
 					selection.first = selection.last -= 1;
-					language.invalidate(selection.last);
+					language->invalidate(selection.last);
 					buffer.remove(selection.last);
 					newlines.remove(selection.last);
 					++offset;
 				}
 			}
 			else {
-				language.invalidate(selection.min());
+				language->invalidate(selection.min());
 				for (std::size_t i = selection.min(); i < selection.max(); ++i) {
 					buffer.remove(selection.min());
 					newlines.remove(selection.min());

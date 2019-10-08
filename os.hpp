@@ -10,6 +10,13 @@
 #endif
 #include <cstddef>
 
+constexpr bool is_path_separator(char c) {
+	#ifdef _WIN32
+	#else
+	return c == '/';
+	#endif
+}
+
 class Mmap {
 	std::size_t size;
 	char* map;
