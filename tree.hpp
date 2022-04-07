@@ -124,6 +124,23 @@ public:
 	}
 };
 
+struct TreeBeginComp {
+	template <class I> bool operator <(const I&) const {
+		return true;
+	}
+};
+struct TreeEndComp {
+	template <class I> bool operator <(const I&) const {
+		return false;
+	}
+};
+inline TreeBeginComp tree_begin() {
+	return TreeBeginComp();
+}
+inline TreeEndComp tree_end() {
+	return TreeEndComp();
+}
+
 template <class I> class Tree {
 	using T = typename I::T;
 	struct Node {
@@ -144,17 +161,20 @@ template <class I> class Tree {
 	static I get_info(Node* child) {
 		return child->info;
 	}
+	static std::size_t get_last_index(Leaf* node) {
+		return node->children.get_size();
+	}
+	static std::size_t get_last_index(INode* node) {
+		return node->children.get_size() - 1;
+	}
 	template <class N, class C> static std::size_t get_index(std::size_t depth, N* node, I& sum, C comp) {
-		assert(comp < sum + node->info);
-		std::size_t i = 0;
-		while (true) {
+		std::size_t i;
+		for (i = 0; i < get_last_index(node); ++i) {
 			const I next_sum = sum + get_info(node->children[i]);
-			if (comp < next_sum) {
-				return i;
-			}
+			if (comp < next_sum) break;
 			sum = next_sum;
-			++i;
 		}
+		return i;
 	}
 	template <class N> static void recompute_info(std::size_t depth, N* node) {
 		node->info = I();
@@ -194,43 +214,6 @@ template <class I> class Tree {
 			return get(depth, static_cast<INode*>(node), sum, comp);
 		else
 			return get(depth, static_cast<Leaf*>(node), sum, comp);
-	}
-
-	// append
-	static Node* append(std::size_t depth, Leaf* node, const T& t) {
-		node->children.insert(t);
-		if (node->children.get_size() == Leaf::SIZE) {
-			Leaf* next_node = new Leaf();
-			node->children.split(next_node->children);
-			recompute_info(depth, node);
-			recompute_info(depth, next_node);
-			return next_node;
-		}
-		//recompute_info(depth, node);
-		node->info = node->info + I(t);
-		return nullptr;
-	}
-	static Node* append(std::size_t depth, INode* node, const T& t) {
-		Node* new_child = append(depth - 1, node->children.get(), t);
-		if (new_child) {
-			node->children.insert(new_child);
-			if (node->children.get_size() == INode::SIZE) {
-				INode* next_node = new INode();
-				node->children.split(next_node->children);
-				recompute_info(depth, node);
-				recompute_info(depth, next_node);
-				return next_node;
-			}
-		}
-		//recompute_info(depth, node);
-		node->info = node->info + I(t);
-		return nullptr;
-	}
-	static Node* append(std::size_t depth, Node* node, const T& t) {
-		if (depth > 0)
-			return append(depth, static_cast<INode*>(node), t);
-		else
-			return append(depth, static_cast<Leaf*>(node), t);
 	}
 
 	// insert
@@ -349,8 +332,8 @@ public:
 		get(depth, root, sum, comp);
 		return sum;
 	}
-	void append(const T& t) {
-		Node* new_child = append(depth, root, t);
+	template <class C> void insert(C comp, const T& t) {
+		Node* new_child = insert(depth, root, I(), comp, t);
 		if (new_child) {
 			++depth;
 			INode* new_root = new INode();
@@ -360,22 +343,8 @@ public:
 			root = new_root;
 		}
 	}
-	template <class C> void insert(C comp, const T& t) {
-		Node* new_child;
-		if (!(comp < get_info())) {
-			new_child = append(depth, root, t);
-		}
-		else {
-			new_child = insert(depth, root, I(), comp, t);
-		}
-		if (new_child) {
-			++depth;
-			INode* new_root = new INode();
-			new_root->children.insert(root);
-			new_root->children.insert(new_child);
-			recompute_info(depth, new_root);
-			root = new_root;
-		}
+	void append(const T& t) {
+		insert(tree_end(), t);
 	}
 	template <class C> void remove(C comp) {
 		remove(depth, root, I(), comp);
