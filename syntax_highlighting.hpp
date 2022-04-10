@@ -72,16 +72,22 @@ public:
 
 struct Theme {
 	Color background;
+	Color background_active;
 	Color selection;
 	Color cursor;
+	Color number_background;
+	Color number_background_active;
 	Style number;
 	Style number_active;
 	Style styles[5];
 	void write(JSONWriter& writer) const {
 		writer.write_object([&](JSONObjectWriter& writer) {
 			background.write(writer.write_member("background"));
+			background_active.write(writer.write_member("background_active"));
 			selection.write(writer.write_member("selection"));
 			cursor.write(writer.write_member("cursor"));
+			number_background.write(writer.write_member("number_background"));
+			number_background_active.write(writer.write_member("number_background_active"));
 			number.write(writer.write_member("number"));
 			number_active.write(writer.write_member("number_active"));
 			writer.write_member("styles").write_array([&](JSONArrayWriter& writer) {
@@ -93,20 +99,8 @@ struct Theme {
 	}
 };
 
-constexpr Theme default_theme = {
-	Color::hsv(0, 0, 100), // background
-	Color::hsv(60, 40, 100), // selection
-	Color::hsv(0, 0, 20), // cursor
-	Style(Color::hsv(0, 0, 60)), // number
-	Style(Color::hsv(0, 0, 20)), // number_active
-	{
-		Style(Color::hsv(0, 0, 20)), // text
-		Style(Color::hsv(0, 0, 60), Weight::NORMAL, true), // comments
-		Style(Color::hsv(270, 80, 80), Weight::BOLD), // keywords
-		Style(Color::hsv(210, 80, 80), Weight::BOLD), // types
-		Style(Color::hsv(150, 80, 80)) // literals
-	}
-};
+#include "themes/default.hpp"
+#include "themes/one_dark.hpp"
 
 class Span {
 public:
