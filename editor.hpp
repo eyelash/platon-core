@@ -60,7 +60,7 @@ public:
 	}
 	void insert(std::size_t index, char c) {
 		const Info sum = tree.get_sum(CharComp(index));
-		const std::size_t line = tree.get(CharComp(index));
+		const std::size_t line = *tree.get(CharComp(index));
 		tree.remove(CharComp(index));
 		if (c == '\n') {
 			tree.insert(CharComp(sum.chars), line - (index - sum.chars));
@@ -72,11 +72,11 @@ public:
 	}
 	void remove(std::size_t index) {
 		const Info sum = tree.get_sum(CharComp(index));
-		std::size_t line = tree.get(CharComp(index));
+		std::size_t line = *tree.get(CharComp(index));
 		tree.remove(CharComp(index));
 		--line;
 		if (index - sum.chars == line) {
-			line += tree.get(CharComp(sum.chars));
+			line += *tree.get(CharComp(sum.chars));
 			tree.remove(CharComp(sum.chars));
 			tree.insert(CharComp(sum.chars), line);
 		}

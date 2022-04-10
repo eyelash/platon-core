@@ -149,11 +149,36 @@ template <class I> class Tree {
 	struct Leaf: Node {
 		static constexpr std::size_t SIZE = 128;
 		StaticVector<T, SIZE> children;
+		Leaf* previous_leaf = nullptr;
+		Leaf* next_leaf = nullptr;
 	};
 	struct INode: Node {
 		static constexpr std::size_t SIZE = 16;
 		StaticVector<Node*, SIZE> children;
 	};
+
+public:
+	class Iterator {
+		Leaf* leaf;
+		std::size_t i;
+	public:
+		Iterator(Leaf* leaf, std::size_t i): leaf(leaf), i(i) {}
+		bool operator !=(const Iterator& rhs) const {
+			return leaf != rhs.leaf || i != rhs.i;
+		}
+		const T& operator *() const {
+			return leaf->children[i];
+		}
+		Iterator& operator ++() {
+			++i;
+			if (i == leaf->children.get_size() && leaf->next_leaf) {
+				leaf = leaf->next_leaf;
+				i = 0;
+			}
+			return *this;
+		}
+	};
+private:
 
 	static I get_info(const T& child) {
 		return I(child);
@@ -185,6 +210,8 @@ template <class I> class Tree {
 
 	// free
 	static void free(std::size_t depth, Leaf* node) {
+		if (node->previous_leaf) node->previous_leaf->next_leaf = node->next_leaf;
+		if (node->next_leaf) node->next_leaf->previous_leaf = node->previous_leaf;
 		delete node;
 	}
 	static void free(std::size_t depth, INode* node) {
@@ -201,15 +228,15 @@ template <class I> class Tree {
 	}
 
 	// get
-	template <class C> static T get(std::size_t depth, Leaf* node, I& sum, C comp) {
+	template <class C> static Iterator get(std::size_t depth, Leaf* node, I& sum, C comp) {
 		const std::size_t i = get_index(depth, node, sum, comp);
-		return node->children[i];
+		return Iterator(node, i);
 	}
-	template <class C> static T get(std::size_t depth, INode* node, I& sum, C comp) {
+	template <class C> static Iterator get(std::size_t depth, INode* node, I& sum, C comp) {
 		const std::size_t i = get_index(depth, node, sum, comp);
 		return get(depth - 1, node->children[i], sum, comp);
 	}
-	template <class C> static T get(std::size_t depth, Node* node, I& sum, C comp) {
+	template <class C> static Iterator get(std::size_t depth, Node* node, I& sum, C comp) {
 		if (depth > 0)
 			return get(depth, static_cast<INode*>(node), sum, comp);
 		else
@@ -222,6 +249,10 @@ template <class I> class Tree {
 		node->children.insert(index, t);
 		if (node->children.get_size() == Leaf::SIZE) {
 			Leaf* next_node = new Leaf();
+			next_node->previous_leaf = node;
+			next_node->next_leaf = node->next_leaf;
+			if (node->next_leaf) node->next_leaf->previous_leaf = next_node;
+			node->next_leaf = next_node;
 			node->children.split(next_node->children);
 			recompute_info(depth, node);
 			recompute_info(depth, next_node);
@@ -320,7 +351,7 @@ public:
 	I get_info() const {
 		return root->info;
 	}
-	template <class C> T get(C comp) const {
+	template <class C> Iterator get(C comp) const {
 		I sum;
 		return get(depth, root, sum, comp);
 	}
@@ -356,5 +387,11 @@ public:
 				--depth;
 			}
 		}
+	}
+	Iterator begin() const {
+		return get(tree_begin());
+	}
+	Iterator end() const {
+		return get(tree_end());
 	}
 };
