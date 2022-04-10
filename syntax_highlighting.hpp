@@ -385,7 +385,6 @@ constexpr auto end() {
 #include "languages/c.hpp"
 
 template <class E> class LanguageInterface {
-	using I = decltype(std::declval<E>().get_iterator(0));
 public:
 	virtual ~LanguageInterface() = default;
 	virtual void invalidate(std::size_t index) = 0;

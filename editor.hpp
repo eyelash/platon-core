@@ -1,22 +1,22 @@
 #pragma once
 
-#include "piece_table.hpp"
+#include "os.hpp"
 #include "tree.hpp"
 #include "json.hpp"
 #include "syntax_highlighting.hpp"
 #include <vector>
+#include <fstream>
 
-class Breaks {
-	class Info {
-	public:
+class TextBuffer {
+	struct Info {
+		using T = char;
 		std::size_t chars;
-		std::size_t lines;
-		constexpr Info(std::size_t chars, std::size_t lines): chars(chars), lines(lines) {}
-		using T = std::size_t;
-		constexpr Info(): chars(0), lines(0) {}
-		constexpr Info(std::size_t chars): chars(chars), lines(1) {}
-		constexpr Info operator +(const Info& info) {
-			return Info(chars + info.chars, lines + info.lines);
+		std::size_t newlines;
+		constexpr Info(std::size_t chars, std::size_t newlines): chars(chars), newlines(newlines) {}
+		constexpr Info(): chars(0), newlines(0) {}
+		constexpr Info(char c): chars(1), newlines(c == '\n') {}
+		constexpr Info operator +(const Info& info) const {
+			return Info(chars + info.chars, newlines + info.newlines);
 		}
 	};
 	class CharComp {
@@ -28,60 +28,54 @@ class Breaks {
 		}
 	};
 	class LineComp {
-		std::size_t line;
+		std::size_t newlines;
 	public:
-		constexpr LineComp(std::size_t line): line(line) {}
+		constexpr LineComp(std::size_t newlines): newlines(newlines) {}
 		constexpr bool operator <(const Info& info) const {
-			return line < info.lines;
+			return newlines < info.newlines;
 		}
 	};
 	Tree<Info> tree;
 public:
-	template <class E> Breaks(const E& buffer) {
-		auto iterator = buffer.begin();
-		std::size_t index = 0;
-		while (*iterator != '\0') {
-			++index;
-			if (*iterator == '\n') {
-				tree.append(index);
-				index = 0;
-			}
-			++iterator;
+	TextBuffer() {}
+	TextBuffer(const char* path) {
+		std::ifstream file(path);
+		for (auto i = std::istreambuf_iterator<char>(file); i != std::istreambuf_iterator<char>(); ++i) {
+			tree.insert(tree_end(), *i);
 		}
+	}
+	std::size_t get_size() const {
+		return tree.get_info().chars;
 	}
 	std::size_t get_total_lines() const {
-		return tree.get_info().lines;
+		return tree.get_info().newlines;
 	}
 	std::size_t get_index(std::size_t line) const {
-		return tree.get_sum(LineComp(line)).chars;
+		return line == 0 ? 0 : tree.get_sum(LineComp(line - 1)).chars + 1;
 	}
 	std::size_t get_line(std::size_t index) const {
-		return tree.get_sum(CharComp(index)).lines;
+		return tree.get_sum(CharComp(index)).newlines;
 	}
 	void insert(std::size_t index, char c) {
-		const Info sum = tree.get_sum(CharComp(index));
-		const std::size_t line = *tree.get(CharComp(index));
-		tree.remove(CharComp(index));
-		if (c == '\n') {
-			tree.insert(CharComp(sum.chars), line - (index - sum.chars));
-			tree.insert(CharComp(sum.chars), (index - sum.chars) + 1);
-		}
-		else {
-			tree.insert(CharComp(sum.chars), line + 1);
-		}
+		tree.insert(CharComp(index), c);
 	}
 	void remove(std::size_t index) {
-		const Info sum = tree.get_sum(CharComp(index));
-		std::size_t line = *tree.get(CharComp(index));
 		tree.remove(CharComp(index));
-		--line;
-		if (index - sum.chars == line) {
-			line += *tree.get(CharComp(sum.chars));
-			tree.remove(CharComp(sum.chars));
-			tree.insert(CharComp(sum.chars), line);
-		}
-		else {
-			tree.insert(CharComp(sum.chars), line);
+	}
+	auto get_iterator(std::size_t index) const {
+		return tree.get(CharComp(index));
+	}
+	auto begin() const {
+		return tree.begin();
+	}
+	auto end() const {
+		return tree.end();
+	}
+	void save(const char* path) {
+		std::ofstream file(path);
+		auto i = std::ostreambuf_iterator<char>(file);
+		for (char c: tree) {
+			*i = c;
 		}
 	}
 };
@@ -137,9 +131,8 @@ public:
 };
 
 class Editor {
-	PieceTable buffer;
-	Breaks newlines;
-	std::unique_ptr<LanguageInterface<PieceTable>> language;
+	TextBuffer buffer;
+	std::unique_ptr<LanguageInterface<TextBuffer>> language;
 	Selections selections;
 	void render_selections(JSONObjectWriter& writer, std::size_t index0, std::size_t index1) const {
 		writer.write_member("selections").write_array([&](JSONArrayWriter& writer) {
@@ -170,10 +163,10 @@ class Editor {
 		return file_name;
 	}
 public:
-	Editor(): newlines(buffer), language(std::make_unique<NoLanguage<PieceTable>>()) {}
-	Editor(const char* path): buffer(path), newlines(buffer), language(get_language(buffer, get_file_name(path))) {}
+	Editor(): language(std::make_unique<NoLanguage<TextBuffer>>()) {}
+	Editor(const char* path): buffer(path), language(get_language(buffer, get_file_name(path))) {}
 	std::size_t get_total_lines() const {
-		return newlines.get_total_lines();
+		return buffer.get_total_lines();
 	}
 	const char* render(std::size_t first_line, std::size_t last_line) {
 		static std::string json;
@@ -185,8 +178,8 @@ public:
 					std::size_t index0 = 0;
 					std::size_t index1 = 0;
 					if (i < get_total_lines()) {
-						index0 = newlines.get_index(i);
-						index1 = newlines.get_index(i + 1);
+						index0 = buffer.get_index(i);
+						index1 = buffer.get_index(i + 1);
 					}
 					writer.write_member("text").write_string(buffer.get_iterator(index0), buffer.get_iterator(index1));
 					writer.write_member("number").write_number(i + 1);
@@ -205,7 +198,6 @@ public:
 				language->invalidate(selection.min());
 				for (std::size_t i = selection.min(); i < selection.max(); ++i) {
 					buffer.remove(selection.min());
-					newlines.remove(selection.min());
 					++offset;
 				}
 				selection.first = selection.last = selection.min();
@@ -217,7 +209,6 @@ public:
 			language->invalidate(selection.last);
 			for (const char* c = text; *c; ++c) {
 				buffer.insert(selection.last, *c);
-				newlines.insert(selection.last, *c);
 				selection += 1;
 				++offset;
 			}
@@ -232,7 +223,6 @@ public:
 					selection.first = selection.last -= 1;
 					language->invalidate(selection.last);
 					buffer.remove(selection.last);
-					newlines.remove(selection.last);
 					++offset;
 				}
 			}
@@ -240,7 +230,6 @@ public:
 				language->invalidate(selection.min());
 				for (std::size_t i = selection.min(); i < selection.max(); ++i) {
 					buffer.remove(selection.min());
-					newlines.remove(selection.min());
 					++offset;
 				}
 				selection.first = selection.last = selection.min();
@@ -256,14 +245,14 @@ public:
 	}
 	void set_cursor(std::size_t column, std::size_t row) {
 		row = std::min(row, get_total_lines() - 1);
-		std::size_t cursor = newlines.get_index(row) + column;
-		cursor = std::min(cursor, newlines.get_index(row + 1) - 1);
+		std::size_t cursor = buffer.get_index(row) + column;
+		cursor = std::min(cursor, buffer.get_index(row + 1) - 1);
 		selections.set_cursor(cursor);
 	}
 	void toggle_cursor(std::size_t column, std::size_t row) {
 		row = std::min(row, get_total_lines() - 1);
-		std::size_t cursor = newlines.get_index(row) + column;
-		cursor = std::min(cursor, newlines.get_index(row + 1) - 1);
+		std::size_t cursor = buffer.get_index(row) + column;
+		cursor = std::min(cursor, buffer.get_index(row + 1) - 1);
 		selections.toggle_cursor(cursor);
 	}
 	void move_left(bool extend_selection = false) {
