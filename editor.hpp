@@ -264,17 +264,20 @@ public:
 			}
 		}
 	}
+	std::size_t get_index(std::size_t column, std::size_t row) const {
+		if (row > get_total_lines() - 1) {
+			return buffer.get_size() - 1;
+		}
+		else {
+			std::size_t index = buffer.get_index(row) + column;
+			return std::min(index, buffer.get_index(row + 1) - 1);
+		}
+	}
 	void set_cursor(std::size_t column, std::size_t row) {
-		row = std::min(row, get_total_lines() - 1);
-		std::size_t cursor = buffer.get_index(row) + column;
-		cursor = std::min(cursor, buffer.get_index(row + 1) - 1);
-		selections.set_cursor(cursor);
+		selections.set_cursor(get_index(column, row));
 	}
 	void toggle_cursor(std::size_t column, std::size_t row) {
-		row = std::min(row, get_total_lines() - 1);
-		std::size_t cursor = buffer.get_index(row) + column;
-		cursor = std::min(cursor, buffer.get_index(row + 1) - 1);
-		selections.toggle_cursor(cursor);
+		selections.toggle_cursor(get_index(column, row));
 	}
 	void move_left(bool extend_selection = false) {
 		for (Selection& selection: selections) {
