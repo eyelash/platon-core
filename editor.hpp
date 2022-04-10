@@ -43,6 +43,9 @@ public:
 		for (auto i = std::istreambuf_iterator<char>(file); i != std::istreambuf_iterator<char>(); ++i) {
 			tree.insert(tree_end(), *i);
 		}
+		if (get_size() == 0 || *tree.get(tree_end()) != '\n') {
+			tree.insert(tree_end(), '\n');
+		}
 	}
 	std::size_t get_size() const {
 		return tree.get_info().chars;
