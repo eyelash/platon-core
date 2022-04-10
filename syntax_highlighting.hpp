@@ -7,36 +7,45 @@
 #include <memory>
 
 class Color {
+	static constexpr float hue_function(float h) {
+		return h <= 60.f ? (h / 60.f) : h <= 180.f ? 1.f : h <= 240.f ? (4.f - h / 60.f) : 0.f;
+	}
 	static constexpr Color hue(float h) {
-		return
-		    h <= 1.f ? Color(1.f, h-0.f, 0.f)
-		  : h <= 2.f ? Color(2.f-h, 1.f, 0.f)
-		  : h <= 3.f ? Color(0.f, 1.f, h-2.f)
-		  : h <= 4.f ? Color(0.f, 4.f-h, 1.f)
-		  : h <= 5.f ? Color(h-4.f, 0.f, 1.f)
-		  : Color(1.f, 0.f, 6.f-h);
-	}
-	constexpr Color saturation(float s) const {
-		return Color(red * s + 1.f - s, green * s + 1.f - s, blue * s + 1.f - s, alpha);
-	}
-	constexpr Color value(float v) const {
-		return Color(red * v, green * v, blue * v, alpha);
+		return Color(
+			hue_function(h < 240.f ? h + 120.f : h - 240.f),
+			hue_function(h),
+			hue_function(h < 120.f ? h + 240.f : h - 120.f)
+		);
 	}
 public:
-	float red;
-	float green;
-	float blue;
-	float alpha;
-	constexpr Color(float red, float green, float blue, float alpha = 1.f): red(red), green(green), blue(blue), alpha(alpha) {}
+	float r;
+	float g;
+	float b;
+	float a;
+	constexpr Color(float r, float g, float b, float a = 1.f): r(r), g(g), b(b), a(a) {}
+	constexpr Color operator +(const Color& c) const {
+		return Color(
+			(r * a * (1.f - c.a) + c.r * c.a) / (a * (1.f - c.a) + c.a),
+			(g * a * (1.f - c.a) + c.g * c.a) / (a * (1.f - c.a) + c.a),
+			(b * a * (1.f - c.a) + c.b * c.a) / (a * (1.f - c.a) + c.a),
+			a * (1.f - c.a) + c.a
+		);
+	}
 	static constexpr Color hsv(float h, float s, float v) {
-		return hue(h / 60.f).saturation(s / 100.f).value(v / 100.f);
+		return hue(h) + Color(1.f, 1.f, 1.f, 1.f - s / 100.f) + Color(0.f, 0.f, 0.f, 1.f - v / 100.f);
+	}
+	static constexpr Color hsl(float h, float s, float l) {
+		return hue(h) + Color(.5f, .5f, .5f, 1.f - s / 100.f) + (l < 50.f ? Color(0.f, 0.f, 0.f, 1.f - l / 50.f) : Color(1.f, 1.f, 1.f, l / 50.f - 1.f));
+	}
+	constexpr Color with_alpha(float a) const {
+		return Color(r, g, b, this->a * a);
 	}
 	void write(JSONWriter& writer) const {
 		writer.write_array([&](JSONArrayWriter& writer) {
-			writer.write_element().write_number(red * 255.f + .5f);
-			writer.write_element().write_number(green * 255.f + .5f);
-			writer.write_element().write_number(blue * 255.f + .5f);
-			writer.write_element().write_number(alpha * 255.f + .5f);
+			writer.write_element().write_number(r * 255.f + .5f);
+			writer.write_element().write_number(g * 255.f + .5f);
+			writer.write_element().write_number(b * 255.f + .5f);
+			writer.write_element().write_number(a * 255.f + .5f);
 		});
 	}
 };
@@ -103,49 +112,48 @@ class Span {
 public:
 	std::size_t first;
 	std::size_t last;
-	std::size_t match_start;
-	std::size_t match_max;
-	int theme_index;
-	constexpr Span(std::size_t first, std::size_t last, int theme_index): first(first), last(last), match_start(0), match_max(0), theme_index(theme_index) {}
+	int style;
+	constexpr Span(std::size_t first, std::size_t last, int style): first(first), last(last), style(style) {}
 };
 
-template <class I> class MatchContext {
-	I position;
-	std::size_t max_index;
-	std::vector<Span>& spans;
+class SourceNode {
+	std::size_t length;
+	std::vector<std::unique_ptr<SourceNode>> children;
+	int style;
 public:
-	constexpr MatchContext(const I& position, std::size_t max_index, std::vector<Span>& spans): position(position), max_index(max_index), spans(spans) {}
-	char get_char() const {
-		return *position;
-	}
-	std::size_t get_index() const {
-		return position.get_index();
-	}
-	MatchContext& operator ++() {
-		++position;
-		if (position.get_index() > max_index) {
-			max_index = position.get_index();
+	SourceNode(std::size_t length): length(length), style(0) {}
+	SourceNode(std::vector<std::unique_ptr<SourceNode>>&& children): length(0), children(std::move(children)), style(0) {
+		for (const auto& child: this->children) {
+			length += child->get_length();
 		}
-		return *this;
 	}
-	class Savepoint {
-	public:
-		I position;
-		std::size_t spans_size;
-		constexpr Savepoint(const I& position, std::size_t spans_size): position(position), spans_size(spans_size) {}
-	};
-	Savepoint save() const {
-		return Savepoint(position, spans.size());
+	SourceNode(std::unique_ptr<SourceNode>&& child, int style): length(child->get_length()), style(style) {
+		children.emplace_back(std::move(child));
 	}
-	void restore(const Savepoint& savepoint) {
-		position = savepoint.position;
-		spans.erase(spans.begin() + savepoint.spans_size, spans.end());
+	std::size_t get_length() const {
+		return length;
 	}
-	void add_span(std::size_t first, std::size_t last, int theme_index) {
-		spans.emplace_back(first, last, theme_index);
+	const std::vector<std::unique_ptr<SourceNode>>& get_children() const {
+		return children;
 	}
-	std::size_t get_max_index() const {
-		return max_index;
+	int get_style() const {
+		return style;
+	}
+	static void get_spans(std::vector<Span>& spans, const std::unique_ptr<SourceNode>& node, std::size_t index, int outer_style = 1) {
+		// style 0 = inherit, style 1 = no style
+		const int style = node->get_style() ? node->get_style() : outer_style;
+		if (style != outer_style) {
+			if (outer_style != 1) spans.back().last = index;
+			if (style != 1) spans.emplace_back(index, index, style - 1);
+		}
+		for (const auto& child: node->get_children()) {
+			get_spans(spans, child, index, style);
+			index += child->get_length();
+		}
+		if (style != outer_style) {
+			if (style != 1) spans.back().last = index;
+			if (outer_style != 1) spans.emplace_back(index, index, outer_style - 1);
+		}
 	}
 };
 
@@ -153,12 +161,12 @@ class Char {
 	char c;
 public:
 	constexpr Char(char c): c(c) {}
-	template <class I> bool match(I& context) const {
-		if (context.get_char() == c) {
-			++context;
-			return true;
+	template <class I> std::unique_ptr<SourceNode> match(I& i, const I& end) const {
+		if (i != end && *i == c) {
+			++i;
+			return std::make_unique<SourceNode>(1);
 		}
-		return false;
+		return nullptr;
 	}
 };
 
@@ -167,24 +175,23 @@ class Range {
 	char last;
 public:
 	constexpr Range(char first, char last): first(first), last(last) {}
-	template <class I> bool match(I& context) const {
-		const char c = context.get_char();
-		if (c != '\0' && c >= first && c <= last) {
-			++context;
-			return true;
+	template <class I> std::unique_ptr<SourceNode> match(I& i, const I& end) const {
+		if (i != end && *i >= first && *i <= last) {
+			++i;
+			return std::make_unique<SourceNode>(1);
 		}
-		return false;
+		return nullptr;
 	}
 };
 
 class AnyChar {
 public:
-	template <class I> bool match(I& context) const {
-		if (context.get_char() == '\0') {
-			return false;
+	template <class I> std::unique_ptr<SourceNode> match(I& i, const I& end) const {
+		if (i != end) {
+			++i;
+			return std::make_unique<SourceNode>(1);
 		}
-		++context;
-		return true;
+		return nullptr;
 	}
 };
 
@@ -192,16 +199,20 @@ class String {
 	const char* string;
 public:
 	constexpr String(const char* string): string(string) {}
-	template <class I> bool match(I& context) const {
-		const auto savepoint = context.save();
+	template <class I> std::unique_ptr<SourceNode> match(I& i, const I& end) const {
+		const I begin = i;
+		std::size_t length = 0;
 		for (const char* s = string; *s != '\0'; ++s) {
-			if (*s != context.get_char()) {
-				context.restore(savepoint);
-				return false;
+			if (i != end && *i == *s) {
+				++i;
+				++length;
 			}
-			++context;
+			else {
+				i = begin;
+				return nullptr;
+			}
 		}
-		return true;
+		return std::make_unique<SourceNode>(length);
 	}
 };
 
@@ -215,24 +226,16 @@ class CaseInsensitiveString {
 	}
 public:
 	constexpr CaseInsensitiveString(const char* string): string(string) {}
-	template <class I> bool match(I& context) const {
-		const auto savepoint = context.save();
-		for (const char* s = string; *s != '\0'; ++s) {
-			if (to_lower(*s) != to_lower(context.get_char())) {
-				context.restore(savepoint);
-				return false;
-			}
-			++context;
-		}
-		return true;
-	}
 };
 
 template <class... T> class Sequence;
 template <> class Sequence<> {
 public:
-	template <class I> bool match(I& context) const {
+	template <class I> bool match(I& i, const I& end, std::vector<std::unique_ptr<SourceNode>>& source_children) const {
 		return true;
+	}
+	template <class I> std::unique_ptr<SourceNode> match(I& i, const I& end) const {
+		return std::make_unique<SourceNode>(0);
 	}
 };
 template <class T0, class... T> class Sequence<T0, T...> {
@@ -240,16 +243,25 @@ template <class T0, class... T> class Sequence<T0, T...> {
 	Sequence<T...> sequence;
 public:
 	constexpr Sequence(const T0& t0, const T&... t): t0(t0), sequence(t...) {}
-	template <class I> bool match(I& context) const {
-		const auto savepoint = context.save();
-		if (!t0.match(context)) {
+	template <class I> bool match(I& i, const I& end, std::vector<std::unique_ptr<SourceNode>>& source_children) const {
+		if (auto source_node = t0.match(i, end)) {
+			source_children.emplace_back(std::move(source_node));
+			return sequence.match(i, end, source_children);
+		}
+		else {
 			return false;
 		}
-		if (!sequence.match(context)) {
-			context.restore(savepoint);
-			return false;
+	}
+	template <class I> std::unique_ptr<SourceNode> match(I& i, const I& end) const {
+		const I begin = i;
+		std::vector<std::unique_ptr<SourceNode>> source_children;
+		if (match(i, end, source_children)) {
+			return std::make_unique<SourceNode>(std::move(source_children));
 		}
-		return true;
+		else {
+			i = begin;
+			return nullptr;
+		}
 	}
 };
 template <class... T> Sequence(const T&...) -> Sequence<T...>;
@@ -257,8 +269,8 @@ template <class... T> Sequence(const T&...) -> Sequence<T...>;
 template <class... T> class Choice;
 template <> class Choice<> {
 public:
-	template <class I> bool match(I& context) const {
-		return false;
+	template <class I> std::unique_ptr<SourceNode> match(I& i, const I& end) const {
+		return nullptr;
 	}
 };
 template <class T0, class... T> class Choice<T0, T...> {
@@ -266,11 +278,13 @@ template <class T0, class... T> class Choice<T0, T...> {
 	Choice<T...> choice;
 public:
 	constexpr Choice(const T0& t0, const T&... t): t0(t0), choice(t...) {}
-	template <class I> bool match(I& context) const {
-		if (t0.match(context)) {
-			return true;
+	template <class I> std::unique_ptr<SourceNode> match(I& i, const I& end) const {
+		if (auto source_node = t0.match(i, end)) {
+			return source_node;
 		}
-		return choice.match(context);
+		else {
+			return choice.match(i, end);
+		}
 	}
 };
 template <class... T> Choice(const T&...) -> Choice<T...>;
@@ -279,9 +293,12 @@ template <class T> class Repetition {
 	T t;
 public:
 	constexpr Repetition(const T& t): t(t) {}
-	template <class I> bool match(I& context) const {
-		while (t.match(context));
-		return true;
+	template <class I> std::unique_ptr<SourceNode> match(I& i, const I& end) const {
+		std::vector<std::unique_ptr<SourceNode>> source_children;
+		while (auto source_node = t.match(i, end)) {
+			source_children.emplace_back(std::move(source_node));
+		}
+		return std::make_unique<SourceNode>(std::move(source_children));
 	}
 };
 
@@ -289,9 +306,13 @@ template <class T> class Optional {
 	T t;
 public:
 	constexpr Optional(const T& t): t(t) {}
-	template <class I> bool match(I& context) const {
-		t.match(context);
-		return true;
+	template <class I> std::unique_ptr<SourceNode> match(I& i, const I& end) const {
+		if (auto source_node = t.match(i, end)) {
+			return source_node;
+		}
+		else {
+			return std::make_unique<SourceNode>(0);
+		}
 	}
 };
 
@@ -299,13 +320,15 @@ template <class T> class Not {
 	T t;
 public:
 	constexpr Not(const T& t): t(t) {}
-	template <class I> bool match(I& context) const {
-		const auto savepoint = context.save();
-		if (t.match(context)) {
-			context.restore(savepoint);
-			return false;
+	template <class I> std::unique_ptr<SourceNode> match(I& i, const I& end) const {
+		const I begin = i;
+		if (t.match(i, end)) {
+			i = begin;
+			return nullptr;
 		}
-		return true;
+		else {
+			return std::make_unique<SourceNode>(0);
+		}
 	}
 };
 
@@ -313,112 +336,75 @@ template <class T> class But {
 	T t;
 public:
 	constexpr But(const T& t): t(t) {}
-	template <class I> bool match(I& context) const {
-		const auto savepoint = context.save();
-		if (t.match(context)) {
-			context.restore(savepoint);
-			return false;
-		}
-		return AnyChar().match(context);
-	}
 };
 
 class End {
 public:
-	template <class I> bool match(I& context) const {
-		if (context.get_char() == '\0') {
-			return true;
-		}
-		return false;
-	}
 };
 
 template <class T> class Highlight {
 	T t;
-	int theme_index;
+	int style;
 public:
-	constexpr Highlight(const T& t, int theme_index): t(t), theme_index(theme_index) {}
-	template <class I> bool match(MatchContext<I>& context) const {
-		const std::size_t start_index = context.get_index();
-		if (t.match(context)) {
-			context.add_span(start_index, context.get_index(), theme_index);
-			return true;
+	constexpr Highlight(const T& t, int style): t(t), style(style + 1) {}
+	template <class I> std::unique_ptr<SourceNode> match(I& i, const I& end) const {
+		if (auto source_node = t.match(i, end)) {
+			return std::make_unique<SourceNode>(std::move(source_node), style);
 		}
-		return false;
+		else {
+			return nullptr;
+		}
 	}
 };
 
-template <class T, class... A> constexpr auto keywords(const T& t, A&&... args) {
-	return Sequence(Choice(String(std::forward<A>(args))...), Not(t));
+constexpr Char get_language_node(char c) {
+	return Char(c);
+}
+constexpr String get_language_node(const char* s) {
+	return String(s);
+}
+template <class T> constexpr T get_language_node(T language_node) {
+	return language_node;
 }
 
-constexpr auto c_comment = Choice(
-	Sequence(String("//"), Repetition(But(Char('\n')))), // single line
-	Sequence(String("/*"), Repetition(But(String("*/"))), String("*/")) // multi-line
-);
-constexpr auto c_preproc = Sequence(Char('#'), Repetition(But(Char('\n'))));
-constexpr auto hex_prefix = Sequence(Char('0'), Choice(Char('x'), Char('X')));
-constexpr auto digit = Range('0', '9');
-constexpr auto hex_digit = Choice(Range('0', '9'), Range('a', 'f'), Range('A', 'F'));
-constexpr auto exponent = Sequence(Choice(Char('e'), Char('E')), Optional(Char('-')), digit, Repetition(digit));
-constexpr auto hex_exponent = Sequence(Choice(Char('p'), Char('P')), Optional(Char('-')), digit, Repetition(digit));
-constexpr auto integer_suffix = Choice(
-	Sequence(Choice(Char('l'), Char('L'), String("ll"), String("LL")), Optional(Choice(Char('u'), Char('U')))), // l before u
-	Sequence(Choice(Char('u'), Char('U')), Optional(Choice(Char('l'), Char('L'), String("ll"), String("LL")))) // u before l
-);
-constexpr auto float_suffix = Choice(Char('f'), Char('F'), Char('l'), Char('L'));
-constexpr auto c_number = Sequence(
-	Choice(
-		Sequence(digit, Repetition(digit), Optional(Char('.')), Repetition(digit)),
-		Sequence(Char('.'), digit, Repetition(digit))
-	),
-	Choice(
-		integer_suffix,
-		Sequence(
-			Optional(exponent),
-			Optional(float_suffix)
-		)
-	)
-);
-constexpr auto c_number_hex = Sequence(
-	Char('0'), Choice(Char('x'), Char('X')), // prefix
-	Choice(
-		Sequence(hex_digit, Repetition(hex_digit), Optional(Char('.')), Repetition(hex_digit)),
-		Sequence(Char('.'), hex_digit, Repetition(hex_digit))
-	),
-	Choice(
-		integer_suffix,
-		Sequence(
-			Optional(hex_exponent),
-			Optional(float_suffix)
-		)
-	)
-);
-constexpr auto c_string = Sequence(
-	Optional(Char('L')), // prefix
-	Char('"'), // start character
-	Repetition(Choice(String("\\\""), But(Char('"')))),
-	Char('"') // end character
-);
-constexpr auto c_character = Sequence(
-	Optional(Char('L')), // prefix
-	Char('\''), // start character
-	Repetition(Choice(String("\\'"), But(Char('\'')))),
-	Char('\'') // end character
-);
-constexpr auto c_ident_start = Choice(Range('a', 'z'), Range('A', 'Z'), Char('_'));
-constexpr auto c_ident_char = Choice(c_ident_start, Range('0', '9'));
-constexpr auto c_ident = Sequence(c_ident_start, Repetition(c_ident_char));
-constexpr auto c_whitespace = Choice(Char(' '), Char('\t'));
+constexpr Range range(char first, char last) {
+	return Range(first, last);
+}
+constexpr AnyChar any_char() {
+	return AnyChar();
+}
+template <class... T> constexpr auto sequence(T... children) {
+	return Sequence(get_language_node(children)...);
+}
+template <class... T> constexpr auto choice(T... children) {
+	return Choice(get_language_node(children)...);
+}
+template <class T> constexpr auto repetition(T child) {
+	return Repetition(get_language_node(child));
+}
+template <class T> constexpr auto optional(T child) {
+	return Optional(get_language_node(child));
+}
+template <class T> constexpr auto not_(T child) {
+	return Not(get_language_node(child));
+}
+template <class T> constexpr auto highlight(int style, T child) {
+	return Highlight(get_language_node(child), style);
+}
+template <class T> constexpr auto zero_or_more(T child) {
+	return repetition(child);
+}
+template <class T> constexpr auto one_or_more(T child) {
+	return sequence(child, repetition(child));
+}
+template <class T> constexpr auto but(T child) {
+	return sequence(not_(child), any_char());
+}
+constexpr auto end() {
+	return not_(any_char());
+}
 
-auto c_syntax = Choice(
-	Highlight(c_comment, 1),
-	Highlight(Choice(c_string, c_character, c_number_hex, c_number), 4),
-	Highlight(keywords(c_ident_char, "if", "else", "for", "while", "do", "break", "continue", "switch", "case", "default", "return", "goto", "typedef", "struct", "enum", "union"), 2), // keywords
-	Highlight(keywords(c_ident_char, "const", "static", "extern"), 2), // keywords
-	Highlight(keywords(c_ident_char, "void", "char", "int", "unsigned", "long", "float", "double"), 3), // types
-	c_ident
-);
+#include "languages/c.hpp"
 
 template <class E> class LanguageInterface {
 	using I = decltype(std::declval<E>().get_iterator(0));
@@ -442,30 +428,14 @@ template <class E, class T> class LanguageImplementation: public LanguageInterfa
 public:
 	LanguageImplementation(const T& syntax): syntax(syntax) {}
 	void invalidate(std::size_t index) override {
-		auto iterator = std::lower_bound(spans.begin(), spans.end(), index, [](const Span& span, std::size_t index) {
-			return span.match_max < index;
-		});
-		spans.erase(iterator, spans.end());
-	}
-	void update(const E& buffer, std::size_t max_index) {
-		const std::size_t match_start = spans.empty() ? 0 : spans.back().match_start;
-		const std::size_t match_max = spans.empty() ? 0 : spans.back().match_max;
-		MatchContext context(buffer.get_iterator(match_start), match_max, spans);
-		while (context.get_char() != '\0' && context.get_index() < max_index) {
-			const std::size_t previous_size = spans.size();
-			if (syntax.match(context)) {
-				for (std::size_t i = previous_size; i < spans.size(); ++i) {
-					spans[i].match_start = context.get_index();
-					spans[i].match_max = context.get_max_index();
-				}
-			}
-			else {
-				++context;
-			}
-		}
+		spans.clear();
 	}
 	void highlight(const E& buffer, JSONWriter& writer, std::size_t index0, std::size_t index1) override {
-		update(buffer, index1);
+		if (spans.empty()) {
+			auto i = buffer.begin();
+			auto source_node = syntax.match(i, buffer.end());
+			SourceNode::get_spans(spans, source_node, 0);
+		}
 		writer.write_array([&](JSONArrayWriter& writer) {
 			auto i = std::upper_bound(spans.begin(), spans.end(), index0, [](std::size_t index0, const Span& span) {
 				return index0 < span.last;
@@ -478,7 +448,7 @@ public:
 				writer.write_element().write_array([&](JSONArrayWriter& writer) {
 					writer.write_element().write_number(std::max(span.first, index0) - index0);
 					writer.write_element().write_number(std::min(span.last, index1) - index0);
-					writer.write_element().write_number(span.theme_index);
+					writer.write_element().write_number(span.style);
 				});
 			}
 		});
@@ -486,31 +456,12 @@ public:
 };
 
 template <class T> bool match_string(const T& t, const char* string) {
-	class SimpleContext {
-		const char* position;
-	public:
-		constexpr SimpleContext(const char* position): position(position) {}
-		char get_char() const {
-			return *position;
-		}
-		SimpleContext& operator ++() {
-			++position;
-			return *this;
-		}
-		const char* save() const {
-			return position;
-		}
-		void restore(const char* savepoint) {
-			position = savepoint;
-		}
-	};
-	SimpleContext context(string);
-	return t.match(context);
+	return t.match(string, string + std::char_traits<char>::length(string)) != nullptr;
 }
 
 constexpr auto file_ending(const char* ending) {
-	const auto e = Sequence(Char('.'), CaseInsensitiveString(ending), End());
-	return Sequence(Repetition(But(e)), e);
+	const auto e = sequence('.', ending, end());
+	return sequence(repetition(but(e)), e);
 }
 
 template <class E> std::unique_ptr<LanguageInterface<E>> get_language(const E& buffer, const char* file_name) {
