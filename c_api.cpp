@@ -26,16 +26,20 @@ const char* platon_editor_render(PlatonEditor* editor, size_t first_line, size_t
 	return editor->render(first_line, last_line);
 }
 
-void platon_editor_insert(PlatonEditor* editor, const char* text) {
-	editor->insert(text);
+void platon_editor_insert_text(PlatonEditor* editor, const char* text) {
+	editor->insert_text(text);
 }
 
-void platon_editor_newline(PlatonEditor* editor) {
-	editor->newline();
+void platon_editor_insert_newline(PlatonEditor* editor) {
+	editor->insert_newline();
 }
 
-void platon_editor_backspace(PlatonEditor* editor) {
-	editor->backspace();
+void platon_editor_delete_backward(PlatonEditor* editor) {
+	editor->delete_backward();
+}
+
+void platon_editor_delete_forward(PlatonEditor* editor) {
+	editor->delete_forward();
 }
 
 void platon_editor_set_cursor(PlatonEditor* editor, size_t column, size_t row) {

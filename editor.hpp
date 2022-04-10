@@ -179,6 +179,20 @@ class Editor {
 			}
 		}
 	}
+	void collapse_selections(bool reverse_direction) {
+		for (std::size_t i = 1; i < selections.size(); ++i) {
+			if (selections[i-1].last == selections[i].last || selections[i-1].max() > selections[i].min()) {
+				if (reverse_direction) {
+					selections[i-1] = Selection(selections[i].max(), selections[i-1].min());
+				}
+				else {
+					selections[i-1] = Selection(selections[i-1].min(), selections[i].max());
+				}
+				selections.erase(selections.begin() + i);
+				--i;
+			}
+		}
+	}
 public:
 	Editor(): language(std::make_unique<NoLanguage<TextBuffer>>()) {}
 	Editor(const char* path): buffer(path), language(get_language(buffer, get_file_name(path))) {}
@@ -207,7 +221,7 @@ public:
 		});
 		return json.c_str();
 	}
-	void insert(const char* text) {
+	void insert_text(const char* text) {
 		delete_selections();
 		std::size_t offset = 0;
 		for (Selection& selection: selections) {
@@ -220,7 +234,7 @@ public:
 			}
 		}
 	}
-	void newline() {
+	void insert_newline() {
 		delete_selections();
 		std::size_t offset = 0;
 		for (Selection& selection: selections) {
@@ -238,7 +252,7 @@ public:
 			}
 		}
 	}
-	void backspace() {
+	void delete_backward() {
 		std::size_t offset = 0;
 		for (Selection& selection: selections) {
 			selection -= offset;
@@ -259,13 +273,32 @@ public:
 				selection.first = selection.last = selection.min();
 			}
 		}
-		// collapse selections
-		for (std::size_t i = 1; i < selections.size(); ++i) {
-			if (selections[i-1].last == selections[i].last) {
-				selections.erase(selections.begin() + i);
-				--i;
+		collapse_selections(true);
+	}
+	void delete_forward() {
+		std::size_t last = buffer.get_size() - 1;
+		std::size_t offset = 0;
+		for (Selection& selection: selections) {
+			selection -= offset;
+			if (selection.first == selection.last) {
+				if (selection.last < last) {
+					language->invalidate(selection.last);
+					buffer.remove(selection.last);
+					--last;
+					++offset;
+				}
+			}
+			else {
+				language->invalidate(selection.min());
+				for (std::size_t i = selection.min(); i < selection.max(); ++i) {
+					buffer.remove(selection.min());
+					--last;
+					++offset;
+				}
+				selection.first = selection.last = selection.min();
 			}
 		}
+		collapse_selections(false);
 	}
 	std::size_t get_index(std::size_t column, std::size_t row) const {
 		if (row > get_total_lines() - 1) {
@@ -300,14 +333,7 @@ public:
 				}
 			}
 		}
-		// collapse selections
-		for (std::size_t i = 1; i < selections.size(); ++i) {
-			if (selections[i].last == selections[i-1].last || selections[i].last < selections[i-1].first) {
-				selections[i-1] = Selection(selections[i].first, selections[i-1].last);
-				selections.erase(selections.begin() + i);
-				--i;
-			}
-		}
+		collapse_selections(true);
 	}
 	void move_right(bool extend_selection = false) {
 		const std::size_t last = buffer.get_size() - 1;
@@ -328,14 +354,7 @@ public:
 				}
 			}
 		}
-		// collapse selections
-		for (std::size_t i = 1; i < selections.size(); ++i) {
-			if (selections[i-1].last == selections[i].last || selections[i-1].last > selections[i].first) {
-				selections[i-1] = Selection(selections[i-1].first, selections[i].last);
-				selections.erase(selections.begin() + i);
-				--i;
-			}
-		}
+		collapse_selections(false);
 	}
 	const char* get_theme() const {
 		static std::string json;
