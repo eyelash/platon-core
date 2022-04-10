@@ -139,22 +139,6 @@ public:
 	int get_style() const {
 		return style;
 	}
-	static void get_spans(std::vector<Span>& spans, const std::unique_ptr<SourceNode>& node, std::size_t index, int outer_style = 1) {
-		// style 0 = inherit, style 1 = no style
-		const int style = node->get_style() ? node->get_style() : outer_style;
-		if (style != outer_style) {
-			if (outer_style != 1) spans.back().last = index;
-			if (style != 1) spans.emplace_back(index, index, style - 1);
-		}
-		for (const auto& child: node->get_children()) {
-			get_spans(spans, child, index, style);
-			index += child->get_length();
-		}
-		if (style != outer_style) {
-			if (style != 1) spans.back().last = index;
-			if (outer_style != 1) spans.emplace_back(index, index, outer_style - 1);
-		}
-	}
 };
 
 class Char {
@@ -424,30 +408,48 @@ public:
 
 template <class E, class T> class LanguageImplementation: public LanguageInterface<E> {
 	T syntax;
-	std::vector<Span> spans;
+	std::unique_ptr<SourceNode> source_node;
 public:
 	LanguageImplementation(const T& syntax): syntax(syntax) {}
 	void invalidate(std::size_t index) override {
-		spans.clear();
+		source_node = nullptr;
+	}
+	static void get_spans(std::size_t index0, std::size_t index1, std::vector<Span>& spans, const std::unique_ptr<SourceNode>& node, std::size_t index = 0, int outer_style = 1) {
+		if (index > index1) return;
+		std::size_t end_index = index + node->get_length();
+		if (end_index < index0) return;
+		const int style = node->get_style() ? node->get_style() : outer_style;
+		if (node->get_children().empty()) {
+			index = std::max(index, index0) - index0;
+			end_index = std::min(end_index, index1) - index0;
+			if (index != end_index) {
+				if (!spans.empty() && spans.back().last == index && spans.back().style == style - 1) {
+					spans.back().last = end_index;
+				}
+				else {
+					spans.emplace_back(index, end_index, style - 1);
+				}
+			}
+		}
+		else {
+			for (const auto& child: node->get_children()) {
+				get_spans(index0, index1, spans, child, index, style);
+				index += child->get_length();
+			}
+		}
 	}
 	void highlight(const E& buffer, JSONWriter& writer, std::size_t index0, std::size_t index1) override {
-		if (spans.empty()) {
+		if (source_node == nullptr) {
 			auto i = buffer.begin();
-			auto source_node = syntax.match(i, buffer.end());
-			SourceNode::get_spans(spans, source_node, 0);
+			source_node = syntax.match(i, buffer.end());
 		}
+		std::vector<Span> spans;
+		get_spans(index0, index1, spans, source_node);
 		writer.write_array([&](JSONArrayWriter& writer) {
-			auto i = std::upper_bound(spans.begin(), spans.end(), index0, [](std::size_t index0, const Span& span) {
-				return index0 < span.last;
-			});
-			for (; i != spans.end(); ++i) {
-				const Span& span = *i;
-				if (span.first >= index1) {
-					break;
-				}
+			for (const auto& span: spans) {
 				writer.write_element().write_array([&](JSONArrayWriter& writer) {
-					writer.write_element().write_number(std::max(span.first, index0) - index0);
-					writer.write_element().write_number(std::min(span.last, index1) - index0);
+					writer.write_element().write_number(span.first);
+					writer.write_element().write_number(span.last);
 					writer.write_element().write_number(span.style);
 				});
 			}
