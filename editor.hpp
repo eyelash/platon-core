@@ -162,6 +162,20 @@ class Editor {
 		}
 		return file_name;
 	}
+	void delete_selections() {
+		std::size_t offset = 0;
+		for (Selection& selection: selections) {
+			selection -= offset;
+			if (selection.first != selection.last) {
+				language->invalidate(selection.min());
+				for (std::size_t i = selection.min(); i < selection.max(); ++i) {
+					buffer.remove(selection.min());
+					++offset;
+				}
+				selection.first = selection.last = selection.min();
+			}
+		}
+	}
 public:
 	Editor(): language(std::make_unique<NoLanguage<TextBuffer>>()) {}
 	Editor(const char* path): buffer(path), language(get_language(buffer, get_file_name(path))) {}
@@ -191,19 +205,8 @@ public:
 		return json.c_str();
 	}
 	void insert(const char* text) {
+		delete_selections();
 		std::size_t offset = 0;
-		for (Selection& selection: selections) {
-			selection -= offset;
-			if (selection.first != selection.last) {
-				language->invalidate(selection.min());
-				for (std::size_t i = selection.min(); i < selection.max(); ++i) {
-					buffer.remove(selection.min());
-					++offset;
-				}
-				selection.first = selection.last = selection.min();
-			}
-		}
-		offset = 0;
 		for (Selection& selection: selections) {
 			selection += offset;
 			language->invalidate(selection.last);
@@ -211,6 +214,24 @@ public:
 				buffer.insert(selection.last, *c);
 				selection += 1;
 				++offset;
+			}
+		}
+	}
+	void newline() {
+		delete_selections();
+		std::size_t offset = 0;
+		for (Selection& selection: selections) {
+			selection += offset;
+			language->invalidate(selection.last);
+			buffer.insert(selection.last, '\n');
+			selection += 1;
+			++offset;
+			auto i = buffer.get_iterator(buffer.get_index(buffer.get_line(selection.last) - 1));
+			while (i != buffer.end() && (*i == ' ' || *i == '\t')) {
+				buffer.insert(selection.last, *i);
+				selection += 1;
+				++offset;
+				++i;
 			}
 		}
 	}

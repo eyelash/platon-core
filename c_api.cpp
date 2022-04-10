@@ -30,6 +30,10 @@ void platon_editor_insert(PlatonEditor* editor, const char* text) {
 	editor->insert(text);
 }
 
+void platon_editor_newline(PlatonEditor* editor) {
+	editor->newline();
+}
+
 void platon_editor_backspace(PlatonEditor* editor) {
 	editor->backspace();
 }
