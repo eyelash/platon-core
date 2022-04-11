@@ -40,9 +40,7 @@ public:
 	TextBuffer() {}
 	TextBuffer(const char* path) {
 		std::ifstream file(path);
-		for (auto i = std::istreambuf_iterator<char>(file); i != std::istreambuf_iterator<char>(); ++i) {
-			tree.insert(tree_end(), *i);
-		}
+		tree.append(std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>());
 		if (get_size() == 0 || *tree.get(tree_end()) != '\n') {
 			tree.insert(tree_end(), '\n');
 		}

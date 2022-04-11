@@ -84,25 +84,49 @@ public:
 		--size;
 		get(size).~T();
 	}
-	void split(StaticVector& v) {
-		// split from this into v
-		assert(size == N && v.size == 0 && N % 2 == 0);
-		for (std::size_t i = 0; i < N/2; ++i) {
-			new (v.data + i) T(std::move(get(i + N/2)));
-			get(i + N/2).~T();
+	void balance_out(StaticVector& v, std::size_t n) {
+		// move n elements from the end of this to the beginning of v
+		assert(n <= size && v.size + n <= N);
+		if (n < v.size) {
+			for (std::size_t i = 0; i < n; ++i) {
+				new (v.data + v.size + n - 1 - i) T(std::move(v.get(v.size - 1 - i)));
+			}
+			for (std::size_t i = n; i < v.size; ++i) {
+				v.get(v.size + n - 1 - i) = std::move(v.get(v.size - 1 - i));
+			}
+			for (std::size_t i = 0; i < n; ++i) {
+				v.get(i) = std::move(get(size - n + i));
+				get(size - n + i).~T();
+			}
 		}
-		size = N/2;
-		v.size = N/2;
+		else {
+			for (std::size_t i = 0; i < v.size; ++i) {
+				new (v.data + n + i) T(std::move(v.get(i)));
+				v.get(i) = std::move(get(size - n + i));
+				get(size - n + i).~T();
+			}
+			for (std::size_t i = v.size; i < n; ++i) {
+				new (v.data + i) T(std::move(get(size - n + i)));
+				get(size - n + i).~T();
+			}
+		}
+		size -= n;
+		v.size += n;
 	}
-	void merge(StaticVector& v) {
-		// merge v into this
-		assert(size + v.size < N);
-		for (std::size_t i = 0; i < v.size; ++i) {
+	void balance_in(StaticVector& v, std::size_t n) {
+		// move n elements from the beginning of v to the end of this
+		assert(n <= v.size && size + n <= N);
+		for (std::size_t i = 0; i < n; ++i) {
 			new (data + size + i) T(std::move(v.get(i)));
-			v.get(i).~T();
 		}
-		size = size + v.size;
-		v.size = 0;
+		for (std::size_t i = n; i < v.size; ++i) {
+			v.get(i - n) = std::move(v.get(i));
+		}
+		for (std::size_t i = 0; i < n; ++i) {
+			v.get(v.size - n + i).~T();
+		}
+		size += n;
+		v.size -= n;
 	}
 	T& operator [](std::size_t index) {
 		return get(index);
@@ -253,7 +277,7 @@ private:
 			next_node->next_leaf = node->next_leaf;
 			if (node->next_leaf) node->next_leaf->previous_leaf = next_node;
 			node->next_leaf = next_node;
-			node->children.split(next_node->children);
+			node->children.balance_out(next_node->children, Leaf::SIZE/2);
 			recompute_info(depth, node);
 			recompute_info(depth, next_node);
 			return next_node;
@@ -268,7 +292,7 @@ private:
 			node->children.insert(i + 1, new_child);
 			if (node->children.get_size() == INode::SIZE) {
 				INode* next_node = new INode();
-				node->children.split(next_node->children);
+				node->children.balance_out(next_node->children, INode::SIZE/2);
 				recompute_info(depth, node);
 				recompute_info(depth, next_node);
 				return next_node;
@@ -287,20 +311,18 @@ private:
 	// balance
 	template <class N> static bool balance(std::size_t depth, N* left, N* right) {
 		if (left->children.get_size() + right->children.get_size() < N::SIZE) {
-			left->children.merge(right->children);
+			left->children.balance_in(right->children, right->children.get_size());
 			recompute_info(depth, left);
 			//recompute_info(depth, right);
 			return true;
 		}
 		else {
 			if (left->children.get_size() < N::SIZE/2) {
-				left->children.insert(right->children.get(0));
-				right->children.remove(0);
+				left->children.balance_in(right->children, N::SIZE/2 - left->children.get_size());
 			}
 			else {
 				assert(right->children.get_size() < N::SIZE/2);
-				right->children.insert(0, left->children.get());
-				left->children.remove();
+				left->children.balance_out(right->children, N::SIZE/2 - right->children.get_size());
 			}
 			assert(left->children.get_size() >= N::SIZE/2 && right->children.get_size() >= N::SIZE/2);
 			recompute_info(depth, left);
@@ -315,6 +337,62 @@ private:
 			return balance(depth, static_cast<Leaf*>(left), static_cast<Leaf*>(right));
 	}
 
+	// append
+	template <class Iter> static Node* append(std::size_t depth, Leaf* node, Iter& first, Iter last) {
+		while (node->children.get_size() < Leaf::SIZE && first != last) {
+			node->children.insert(*first);
+			++first;
+		}
+		if (node->children.get_size() == Leaf::SIZE) {
+			Leaf* next_node = new Leaf();
+			next_node->previous_leaf = node;
+			next_node->next_leaf = node->next_leaf;
+			if (node->next_leaf) node->next_leaf->previous_leaf = next_node;
+			node->next_leaf = next_node;
+			node->children.balance_out(next_node->children, 1);
+			while (next_node->children.get_size() < Leaf::SIZE - 1 && first != last) {
+				next_node->children.insert(*first);
+				++first;
+			}
+			if (next_node->children.get_size() < Leaf::SIZE/2) {
+				balance(depth, node, next_node);
+			}
+			recompute_info(depth, node);
+			recompute_info(depth, next_node);
+			return next_node;
+		}
+		recompute_info(depth, node);
+		return nullptr;
+	}
+	template <class Iter> static Node* append(std::size_t depth, INode* node, Iter& first, Iter last) {
+		while (node->children.get_size() < INode::SIZE && first != last) {
+			Node* new_child = append(depth - 1, node->children.get(), first, last);
+			if (new_child) node->children.insert(new_child);
+		}
+		if (node->children.get_size() == INode::SIZE) {
+			INode* next_node = new INode();
+			node->children.balance_out(next_node->children, 1);
+			while (next_node->children.get_size() < INode::SIZE - 1 && first != last) {
+				Node* new_child = append(depth - 1, next_node->children.get(), first, last);
+				if (new_child) next_node->children.insert(new_child);
+			}
+			if (next_node->children.get_size() < INode::SIZE/2) {
+				balance(depth, node, next_node);
+			}
+			recompute_info(depth, node);
+			recompute_info(depth, next_node);
+			return next_node;
+		}
+		recompute_info(depth, node);
+		return nullptr;
+	}
+	template <class Iter> static Node* append(std::size_t depth, Node* node, Iter& first, Iter last) {
+		if (depth > 0)
+			return append(depth, static_cast<INode*>(node), first, last);
+		else
+			return append(depth, static_cast<Leaf*>(node), first, last);
+	}
+
 	// remove
 	template <class C> static bool remove(std::size_t depth, Leaf* node, I sum, C comp) {
 		const std::size_t i = get_index(depth, node, sum, comp);
@@ -326,6 +404,7 @@ private:
 		std::size_t i = get_index(depth, node, sum, comp);
 		if (remove(depth - 1, node->children[i], sum, comp)) {
 			if (i == 0) ++i;
+			assert(i < node->children.get_size());
 			if (balance(depth - 1, node->children[i - 1], node->children[i])) {
 				free(depth - 1, node->children[i]);
 				node->children.remove(i);
@@ -376,6 +455,19 @@ public:
 	}
 	void append(const T& t) {
 		insert(tree_end(), t);
+	}
+	template <class Iter> void append(Iter first, Iter last) {
+		while (first != last) {
+			Node* new_child = append(depth, root, first, last);
+			if (new_child) {
+				++depth;
+				INode* new_root = new INode();
+				new_root->children.insert(root);
+				new_root->children.insert(new_child);
+				recompute_info(depth, new_root);
+				root = new_root;
+			}
+		}
 	}
 	template <class C> void remove(C comp) {
 		remove(depth, root, I(), comp);
