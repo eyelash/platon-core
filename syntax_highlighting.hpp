@@ -432,6 +432,11 @@ public:
 		}
 	}
 	void highlight(const E& buffer, JSONWriter& writer, std::size_t index0, std::size_t index1) override {
+		if (buffer.get_size() > 10000) {
+			// disable syntax highlighting for large files until we have incremental syntax highlighting
+			writer.write_array([](JSONArrayWriter& writer) {});
+			return;
+		}
 		if (source_node == nullptr) {
 			auto i = buffer.begin();
 			source_node = syntax.match(i, buffer.end());
