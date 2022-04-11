@@ -58,6 +58,14 @@ void platon_editor_move_right(PlatonEditor* editor, int extend_selection) {
 	editor->move_right(extend_selection);
 }
 
+void platon_editor_move_up(PlatonEditor* editor, int extend_selection) {
+	editor->move_up(extend_selection);
+}
+
+void platon_editor_move_down(PlatonEditor* editor, int extend_selection) {
+	editor->move_down(extend_selection);
+}
+
 const char* platon_editor_get_theme(const PlatonEditor* editor) {
 	return editor->get_theme();
 }

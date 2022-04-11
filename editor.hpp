@@ -356,6 +356,51 @@ public:
 		}
 		collapse_selections(false);
 	}
+	void move_up(bool extend_selection = false) {
+		for (Selection& selection: selections) {
+			std::size_t line = buffer.get_line(selection.last);
+			std::size_t column = selection.last - buffer.get_index(line);
+			if (extend_selection) {
+				if (line > 0) {
+					selection.last = get_index(column, line - 1);
+				}
+			}
+			else {
+				if (selection.first == selection.last) {
+					if (line > 0) {
+						selection.first = selection.last = get_index(column, line - 1);
+					}
+				}
+				else {
+					selection.first = selection.last = selection.min();
+				}
+			}
+		}
+		collapse_selections(true);
+	}
+	void move_down(bool extend_selection = false) {
+		const std::size_t last_line = get_total_lines() - 1;
+		for (Selection& selection: selections) {
+			std::size_t line = buffer.get_line(selection.last);
+			std::size_t column = selection.last - buffer.get_index(line);
+			if (extend_selection) {
+				if (line < last_line) {
+					selection.last = get_index(column, line + 1);
+				}
+			}
+			else {
+				if (selection.first == selection.last) {
+					if (line < last_line) {
+						selection.first = selection.last = get_index(column, line + 1);
+					}
+				}
+				else {
+					selection.first = selection.last = selection.max();
+				}
+			}
+		}
+		collapse_selections(false);
+	}
 	const char* get_theme() const {
 		static std::string json;
 		json.clear();
