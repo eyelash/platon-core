@@ -186,9 +186,17 @@ public:
 		Leaf* leaf;
 		std::size_t i;
 	public:
+		using difference_type = std::ptrdiff_t;
+		using value_type = T;
+		using pointer = const T*;
+		using reference = const T&;
+		using iterator_category = std::input_iterator_tag;
 		Iterator(Leaf* leaf, std::size_t i): leaf(leaf), i(i) {}
+		bool operator ==(const Iterator& rhs) const {
+			return leaf == rhs.leaf && i == rhs.i;
+		}
 		bool operator !=(const Iterator& rhs) const {
-			return leaf != rhs.leaf || i != rhs.i;
+			return !operator ==(rhs);
 		}
 		const T& operator *() const {
 			return leaf->children[i];

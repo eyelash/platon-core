@@ -74,10 +74,7 @@ public:
 	}
 	void save(const char* path) {
 		std::ofstream file(path);
-		auto i = std::ostreambuf_iterator<char>(file);
-		for (char c: tree) {
-			*i = c;
-		}
+		std::copy(tree.begin(), tree.end(), std::ostreambuf_iterator<char>(file));
 	}
 };
 
@@ -405,6 +402,48 @@ public:
 		JSONWriter writer(json);
 		default_theme.write(writer);
 		return json.c_str();
+	}
+	const char* copy() const {
+		static std::string string;
+		string.clear();
+		auto i = selections.begin();
+		if (i != selections.end()) {
+			string.append(buffer.get_iterator(i->min()), buffer.get_iterator(i->max()));
+			++i;
+			while (i != selections.end()) {
+				string.push_back('\n');
+				string.append(buffer.get_iterator(i->min()), buffer.get_iterator(i->max()));
+				++i;
+			}
+		}
+		return string.c_str();
+	}
+	void paste(const char* text) {
+		std::size_t newlines = 0;
+		for (const char* c = text; *c; ++c) {
+			newlines += *c == '\n';
+		}
+		if (newlines + 1 == selections.size()) {
+			delete_selections();
+			newlines = 0;
+			std::size_t offset = 0;
+			for (const char* c = text; *c; ++c) {
+				if (*c == '\n') {
+					++newlines;
+				}
+				else {
+					Selection& selection = selections[newlines];
+					selection += offset;
+					language->invalidate(selection.last);
+					buffer.insert(selection.last, *c);
+					selection += 1;
+					++offset;
+				}
+			}
+		}
+		else {
+			insert_text(text);
+		}
 	}
 	void save(const char* path) {
 		buffer.save(path);

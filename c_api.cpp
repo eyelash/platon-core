@@ -70,6 +70,14 @@ const char* platon_editor_get_theme(const PlatonEditor* editor) {
 	return editor->get_theme();
 }
 
+const char* platon_editor_copy(const PlatonEditor* editor) {
+	return editor->copy();
+}
+
+void platon_editor_paste(PlatonEditor* editor, const char* text) {
+	editor->paste(text);
+}
+
 void platon_editor_save(PlatonEditor* editor, const char* path) {
 	editor->save(path);
 }
