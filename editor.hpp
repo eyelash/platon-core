@@ -396,6 +396,24 @@ public:
 		}
 		collapse_selections(false);
 	}
+	void move_to_beginning_of_line(bool extend_selection = false) {
+		for (Selection& selection: selections) {
+			selection.last = buffer.get_index(buffer.get_line(selection.last));
+			if (!extend_selection) {
+				selection.first = selection.last;
+			}
+		}
+		collapse_selections(true);
+	}
+	void move_to_end_of_line(bool extend_selection = false) {
+		for (Selection& selection: selections) {
+			selection.last = buffer.get_index(buffer.get_line(selection.last) + 1) - 1;
+			if (!extend_selection) {
+				selection.first = selection.last;
+			}
+		}
+		collapse_selections(false);
+	}
 	const char* get_theme() const {
 		static std::string json;
 		json.clear();

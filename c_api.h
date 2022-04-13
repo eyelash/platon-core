@@ -23,6 +23,8 @@ void platon_editor_move_left(PlatonEditor* editor, int extend_selection);
 void platon_editor_move_right(PlatonEditor* editor, int extend_selection);
 void platon_editor_move_up(PlatonEditor* editor, int extend_selection);
 void platon_editor_move_down(PlatonEditor* editor, int extend_selection);
+void platon_editor_move_to_beginning_of_line(PlatonEditor* editor, int extend_selection);
+void platon_editor_move_to_end_of_line(PlatonEditor* editor, int extend_selection);
 const char* platon_editor_get_theme(const PlatonEditor* editor);
 const char* platon_editor_copy(const PlatonEditor* editor);
 void platon_editor_paste(PlatonEditor* editor, const char* text);
