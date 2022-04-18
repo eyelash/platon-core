@@ -41,7 +41,7 @@ public:
 	TextBuffer(const char* path) {
 		std::ifstream file(path);
 		tree.append(std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>());
-		if (get_size() == 0 || *tree.get(tree_end()) != '\n') {
+		if (get_size() == 0 || *get_iterator(get_size() - 1) != '\n') {
 			tree.insert(tree_end(), '\n');
 		}
 	}
@@ -63,13 +63,13 @@ public:
 	void remove(std::size_t index) {
 		tree.remove(CharComp(index));
 	}
-	auto get_iterator(std::size_t index) const {
+	Tree<Info>::Iterator get_iterator(std::size_t index) const {
 		return tree.get(CharComp(index));
 	}
-	auto begin() const {
+	Tree<Info>::Iterator begin() const {
 		return tree.begin();
 	}
-	auto end() const {
+	Tree<Info>::Iterator end() const {
 		return tree.end();
 	}
 	void save(const char* path) {
