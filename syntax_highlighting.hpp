@@ -385,6 +385,7 @@ constexpr auto end() {
 constexpr auto hex_digit = choice(range('0', '9'), range('a', 'f'), range('A', 'F'));
 
 #include "languages/c.hpp"
+#include "languages/haskell.hpp"
 
 template <class E> class LanguageInterface {
 public:
@@ -469,6 +470,9 @@ constexpr auto file_ending(const char* ending) {
 template <class E> std::unique_ptr<LanguageInterface<E>> get_language(const E& buffer, const char* file_name) {
 	if (match_string(file_ending("c"), file_name)) {
 		return std::make_unique<LanguageImplementation<E, decltype(c_syntax)>>(c_syntax);
+	}
+	if (match_string(file_ending("hs"), file_name)) {
+		return std::make_unique<LanguageImplementation<E, decltype(haskell_syntax)>>(haskell_syntax);
 	}
 	return std::make_unique<NoLanguage<E>>();
 }
