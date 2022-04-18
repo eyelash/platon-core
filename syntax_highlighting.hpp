@@ -382,6 +382,8 @@ constexpr auto end() {
 	return not_(any_char());
 }
 
+constexpr auto hex_digit = choice(range('0', '9'), range('a', 'f'), range('A', 'F'));
+
 #include "languages/c.hpp"
 
 template <class E> class LanguageInterface {
