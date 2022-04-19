@@ -1,10 +1,17 @@
-constexpr auto c_identifier_begin_character = choice(range('a', 'z'), range('A', 'Z'), '_');
-constexpr auto c_identifier_character = choice(range('a', 'z'), range('A', 'Z'), '_', range('0', '9'));
-constexpr auto c_escape = sequence('\\', any_char());
+constexpr auto c_identifier_begin_char = choice(range('a', 'z'), range('A', 'Z'), '_');
+constexpr auto c_identifier_char = choice(range('a', 'z'), range('A', 'Z'), '_', range('0', '9'));
+template <class T> constexpr auto c_keyword(T t) {
+	return sequence(t, not_(c_identifier_char));
+}
+template <class... T> constexpr auto c_keywords(T... arguments) {
+	return choice(c_keyword(arguments)...);
+}
+
 constexpr auto c_comment = choice(
 	sequence("/*", repetition(but("*/")), optional("*/")),
 	sequence("//", repetition(but('\n')))
 );
+constexpr auto c_escape = sequence('\\', any_char());
 constexpr auto c_string_or_character = sequence(
 	optional(choice('L', "u8", 'u', 'U')),
 	choice(sequence(
@@ -51,13 +58,6 @@ constexpr auto c_number = sequence(
 	zero_or_more(choice('u', 'U', 'l', 'L', 'f', 'F'))
 );
 
-constexpr auto c_keyword(const char* s) {
-	return sequence(s, not_(c_identifier_character));
-}
-template <class... T> constexpr auto c_keywords(T... arguments) {
-	return choice(c_keyword(arguments)...);
-}
-
 constexpr auto c_syntax = repetition(choice(
 	// comments
 	highlight(1, c_comment),
@@ -102,6 +102,6 @@ constexpr auto c_syntax = repetition(choice(
 		"const"
 	)),
 	// identifiers
-	sequence(c_identifier_begin_character, zero_or_more(c_identifier_character)),
+	sequence(c_identifier_begin_char, zero_or_more(c_identifier_char)),
 	any_char()
 ));

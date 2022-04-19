@@ -385,6 +385,9 @@ constexpr auto end() {
 constexpr auto hex_digit = choice(range('0', '9'), range('a', 'f'), range('A', 'F'));
 
 #include "languages/c.hpp"
+#include "languages/cplusplus.hpp"
+#include "languages/java.hpp"
+#include "languages/javascript.hpp"
 #include "languages/haskell.hpp"
 
 template <class E> class LanguageInterface {
@@ -462,16 +465,25 @@ template <class T> bool match_string(const T& t, const char* string) {
 	return t.match(string, string + std::char_traits<char>::length(string)) != nullptr;
 }
 
-constexpr auto file_ending(const char* ending) {
-	const auto e = sequence('.', ending, end());
+template <class T> constexpr auto ends_with(T t) {
+	const auto e = sequence(t, end());
 	return sequence(repetition(but(e)), e);
 }
 
 template <class E> std::unique_ptr<LanguageInterface<E>> get_language(const E& buffer, const char* file_name) {
-	if (match_string(file_ending("c"), file_name)) {
+	if (match_string(ends_with(".c"), file_name)) {
 		return std::make_unique<LanguageImplementation<E, decltype(c_syntax)>>(c_syntax);
 	}
-	if (match_string(file_ending("hs"), file_name)) {
+	if (match_string(ends_with(choice(".cpp", ".cc", ".hpp", ".hh", ".h")), file_name)) {
+		return std::make_unique<LanguageImplementation<E, decltype(cplusplus_syntax)>>(cplusplus_syntax);
+	}
+	if (match_string(ends_with(".java"), file_name)) {
+		return std::make_unique<LanguageImplementation<E, decltype(java_syntax)>>(java_syntax);
+	}
+	if (match_string(ends_with(".js"), file_name)) {
+		return std::make_unique<LanguageImplementation<E, decltype(javascript_syntax)>>(javascript_syntax);
+	}
+	if (match_string(ends_with(".hs"), file_name)) {
 		return std::make_unique<LanguageImplementation<E, decltype(haskell_syntax)>>(haskell_syntax);
 	}
 	return std::make_unique<NoLanguage<E>>();
