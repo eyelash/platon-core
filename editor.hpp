@@ -11,12 +11,13 @@ class TextBuffer {
 	struct Info {
 		using T = char;
 		std::size_t chars;
+		std::size_t codepoints;
 		std::size_t newlines;
-		constexpr Info(std::size_t chars, std::size_t newlines): chars(chars), newlines(newlines) {}
-		constexpr Info(): chars(0), newlines(0) {}
-		constexpr Info(char c): chars(1), newlines(c == '\n') {}
+		constexpr Info(std::size_t chars, std::size_t codepoints, std::size_t newlines): chars(chars), codepoints(codepoints), newlines(newlines) {}
+		constexpr Info(): chars(0), codepoints(0), newlines(0) {}
+		constexpr Info(char c): chars(1), codepoints((c & 0xC0) != 0x80), newlines(c == '\n') {}
 		constexpr Info operator +(const Info& info) const {
-			return Info(chars + info.chars, newlines + info.newlines);
+			return Info(chars + info.chars, codepoints + info.codepoints, newlines + info.newlines);
 		}
 	};
 	class CharComp {
@@ -25,6 +26,14 @@ class TextBuffer {
 		constexpr CharComp(std::size_t chars): chars(chars) {}
 		constexpr bool operator <(const Info& info) const {
 			return chars < info.chars;
+		}
+	};
+	class CodepointComp {
+		std::size_t codepoints;
+	public:
+		constexpr CodepointComp(std::size_t codepoints): codepoints(codepoints) {}
+		constexpr bool operator <(const Info& info) const {
+			return codepoints < info.codepoints;
 		}
 	};
 	class LineComp {
@@ -56,6 +65,12 @@ public:
 	}
 	std::size_t get_line(std::size_t index) const {
 		return tree.get_sum(CharComp(index)).newlines;
+	}
+	std::size_t get_codepoints_for_index(std::size_t index) const {
+		return tree.get_sum(CharComp(index)).codepoints;
+	}
+	std::size_t get_index_for_codepoints(std::size_t codepoints) const {
+		return tree.get_sum(CodepointComp(codepoints)).chars;
 	}
 	void insert(std::size_t index, char c) {
 		tree.insert(CharComp(index), c);
@@ -160,6 +175,12 @@ class Editor {
 		}
 		return file_name;
 	}
+	std::size_t get_previous_index(std::size_t index) const {
+		return buffer.get_index_for_codepoints(buffer.get_codepoints_for_index(index) - 1);
+	}
+	std::size_t get_next_index(std::size_t index) const {
+		return buffer.get_index_for_codepoints(buffer.get_codepoints_for_index(index) + 1);
+	}
 	void delete_selections() {
 		std::size_t offset = 0;
 		for (Selection& selection: selections) {
@@ -253,10 +274,13 @@ public:
 			selection -= offset;
 			if (selection.first == selection.last) {
 				if (selection.last > 0) {
-					selection.first = selection.last -= 1;
-					language->invalidate(selection.last);
-					buffer.remove(selection.last);
-					++offset;
+					std::size_t new_index = get_previous_index(selection.last);
+					language->invalidate(new_index);
+					for (std::size_t i = new_index; i < selection.last; ++i) {
+						buffer.remove(new_index);
+						++offset;
+					}
+					selection.first = selection.last = new_index;
 				}
 			}
 			else {
@@ -277,10 +301,13 @@ public:
 			selection -= offset;
 			if (selection.first == selection.last) {
 				if (selection.last < last) {
+					std::size_t new_index = get_next_index(selection.last);
 					language->invalidate(selection.last);
-					buffer.remove(selection.last);
-					--last;
-					++offset;
+					for (std::size_t i = selection.last; i < new_index; ++i) {
+						buffer.remove(selection.last);
+						--last;
+						++offset;
+					}
 				}
 			}
 			else {
@@ -314,13 +341,13 @@ public:
 		for (Selection& selection: selections) {
 			if (extend_selection) {
 				if (selection.last > 0) {
-					selection.last -= 1;
+					selection.last = get_previous_index(selection.last);
 				}
 			}
 			else {
 				if (selection.first == selection.last) {
 					if (selection.last > 0) {
-						selection.first = selection.last -= 1;
+						selection.first = selection.last = get_previous_index(selection.last);
 					}
 				}
 				else {
@@ -335,13 +362,13 @@ public:
 		for (Selection& selection: selections) {
 			if (extend_selection) {
 				if (selection.last < last) {
-					selection.last += 1;
+					selection.last = get_next_index(selection.last);
 				}
 			}
 			else {
 				if (selection.first == selection.last) {
 					if (selection.last < last) {
-						selection.first = selection.last += 1;
+						selection.first = selection.last = get_next_index(selection.last);
 					}
 				}
 				else {
@@ -351,19 +378,25 @@ public:
 		}
 		collapse_selections(false);
 	}
+	std::size_t get_index2(std::size_t column, std::size_t row) const {
+		// the column is measured in codepoints
+		std::size_t codepoints = buffer.get_codepoints_for_index(buffer.get_index(row)) + column;
+		std::size_t max_codepoints = buffer.get_codepoints_for_index(buffer.get_index(row + 1) - 1);
+		return buffer.get_index_for_codepoints(std::min(codepoints, max_codepoints));
+	}
 	void move_up(bool extend_selection = false) {
 		for (Selection& selection: selections) {
 			std::size_t line = buffer.get_line(selection.last);
-			std::size_t column = selection.last - buffer.get_index(line);
+			std::size_t column = buffer.get_codepoints_for_index(selection.last) - buffer.get_codepoints_for_index(buffer.get_index(line));
 			if (extend_selection) {
 				if (line > 0) {
-					selection.last = get_index(column, line - 1);
+					selection.last = get_index2(column, line - 1);
 				}
 			}
 			else {
 				if (selection.first == selection.last) {
 					if (line > 0) {
-						selection.first = selection.last = get_index(column, line - 1);
+						selection.first = selection.last = get_index2(column, line - 1);
 					}
 				}
 				else {
@@ -377,16 +410,16 @@ public:
 		const std::size_t last_line = get_total_lines() - 1;
 		for (Selection& selection: selections) {
 			std::size_t line = buffer.get_line(selection.last);
-			std::size_t column = selection.last - buffer.get_index(line);
+			std::size_t column = buffer.get_codepoints_for_index(selection.last) - buffer.get_codepoints_for_index(buffer.get_index(line));
 			if (extend_selection) {
 				if (line < last_line) {
-					selection.last = get_index(column, line + 1);
+					selection.last = get_index2(column, line + 1);
 				}
 			}
 			else {
 				if (selection.first == selection.last) {
 					if (line < last_line) {
-						selection.first = selection.last = get_index(column, line + 1);
+						selection.first = selection.last = get_index2(column, line + 1);
 					}
 				}
 				else {
