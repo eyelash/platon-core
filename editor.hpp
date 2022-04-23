@@ -472,6 +472,11 @@ public:
 		}
 		return string.c_str();
 	}
+	const char* cut() {
+		const char* result = copy();
+		delete_selections();
+		return result;
+	}
 	void paste(const char* text) {
 		std::size_t newlines = 0;
 		for (const char* c = text; *c; ++c) {

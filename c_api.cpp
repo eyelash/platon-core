@@ -86,6 +86,10 @@ const char* platon_editor_copy(const PlatonEditor* editor) {
 	return editor->copy();
 }
 
+const char* platon_editor_cut(PlatonEditor* editor) {
+	return editor->cut();
+}
+
 void platon_editor_paste(PlatonEditor* editor, const char* text) {
 	editor->paste(text);
 }

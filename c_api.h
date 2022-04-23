@@ -28,6 +28,7 @@ void platon_editor_move_to_end_of_line(PlatonEditor* editor, int extend_selectio
 void platon_editor_select_all(PlatonEditor* editor);
 const char* platon_editor_get_theme(const PlatonEditor* editor);
 const char* platon_editor_copy(const PlatonEditor* editor);
+const char* platon_editor_cut(PlatonEditor* editor);
 void platon_editor_paste(PlatonEditor* editor, const char* text);
 void platon_editor_save(PlatonEditor* editor, const char* path);
 
