@@ -489,10 +489,10 @@ public:
 			for (const char* c = text; *c; ++c) {
 				if (*c == '\n') {
 					++newlines;
+					selections[newlines] += offset;
 				}
 				else {
 					Selection& selection = selections[newlines];
-					selection += offset;
 					language->invalidate(selection.last);
 					buffer.insert(selection.last, *c);
 					selection += 1;
