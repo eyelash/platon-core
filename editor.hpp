@@ -322,20 +322,20 @@ public:
 		}
 		collapse_selections(false);
 	}
-	std::size_t get_index(std::size_t column, std::size_t row) const {
-		if (row > get_total_lines() - 1) {
+	std::size_t get_index(std::size_t column, std::size_t line) const {
+		if (line > get_total_lines() - 1) {
 			return buffer.get_size() - 1;
 		}
 		else {
-			std::size_t index = buffer.get_index(row) + column;
-			return std::min(index, buffer.get_index(row + 1) - 1);
+			std::size_t index = buffer.get_index(line) + column;
+			return std::min(index, buffer.get_index(line + 1) - 1);
 		}
 	}
-	void set_cursor(std::size_t column, std::size_t row) {
-		selections.set_cursor(get_index(column, row));
+	void set_cursor(std::size_t column, std::size_t line) {
+		selections.set_cursor(get_index(column, line));
 	}
-	void toggle_cursor(std::size_t column, std::size_t row) {
-		selections.toggle_cursor(get_index(column, row));
+	void toggle_cursor(std::size_t column, std::size_t line) {
+		selections.toggle_cursor(get_index(column, line));
 	}
 	void move_left(bool extend_selection = false) {
 		for (Selection& selection: selections) {
@@ -378,10 +378,10 @@ public:
 		}
 		collapse_selections(false);
 	}
-	std::size_t get_index2(std::size_t column, std::size_t row) const {
+	std::size_t get_index2(std::size_t column, std::size_t line) const {
 		// the column is measured in codepoints
-		std::size_t codepoints = buffer.get_codepoints_for_index(buffer.get_index(row)) + column;
-		std::size_t max_codepoints = buffer.get_codepoints_for_index(buffer.get_index(row + 1) - 1);
+		std::size_t codepoints = buffer.get_codepoints_for_index(buffer.get_index(line)) + column;
+		std::size_t max_codepoints = buffer.get_codepoints_for_index(buffer.get_index(line + 1) - 1);
 		return buffer.get_index_for_codepoints(std::min(codepoints, max_codepoints));
 	}
 	void move_up(bool extend_selection = false) {
