@@ -74,6 +74,10 @@ void platon_editor_move_to_end_of_line(PlatonEditor* editor, int extend_selectio
 	editor->move_to_end_of_line(extend_selection);
 }
 
+void platon_editor_select_all(PlatonEditor* editor) {
+	editor->select_all();
+}
+
 const char* platon_editor_get_theme(const PlatonEditor* editor) {
 	return editor->get_theme();
 }

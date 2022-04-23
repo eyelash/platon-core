@@ -121,9 +121,9 @@ public:
 	Selections() {
 		emplace_back(0);
 	}
-	void set_cursor(std::size_t cursor) {
+	template <class... A> void set_cursor(A&&... arguments) {
 		clear();
-		emplace_back(cursor);
+		emplace_back(std::forward<A>(arguments)...);
 	}
 	void toggle_cursor(std::size_t cursor) {
 		std::size_t i;
@@ -446,6 +446,9 @@ public:
 			}
 		}
 		collapse_selections(false);
+	}
+	void select_all() {
+		selections.set_cursor(0, buffer.get_size() - 1);
 	}
 	const char* get_theme() const {
 		static std::string json;
