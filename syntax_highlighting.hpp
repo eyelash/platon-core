@@ -68,6 +68,13 @@ public:
 			writer.write_member("italic").write_boolean(italic);
 		});
 	}
+	static constexpr int INHERIT = 0;
+	static constexpr int WORD = 1;
+	static constexpr int DEFAULT = 2;
+	static constexpr int COMMENT = 3;
+	static constexpr int KEYWORD = 4;
+	static constexpr int TYPE = 5;
+	static constexpr int LITERAL = 6;
 };
 
 struct Theme {
@@ -324,7 +331,7 @@ template <class T> class Highlight {
 	T t;
 	int style;
 public:
-	constexpr Highlight(const T& t, int style): t(t), style(style + 1) {}
+	constexpr Highlight(const T& t, int style): t(t), style(style) {}
 	template <class I> std::unique_ptr<SourceNode> match(I& i, const I& end) const {
 		if (auto source_node = t.match(i, end)) {
 			return std::make_unique<SourceNode>(std::move(source_node), style);
@@ -395,6 +402,7 @@ public:
 	virtual ~LanguageInterface() = default;
 	virtual void invalidate(std::size_t index) = 0;
 	virtual void highlight(const E& buffer, JSONWriter& writer, std::size_t index0, std::size_t index1) = 0;
+	virtual void get_word(const E& buffer, std::size_t index, std::size_t& word_start, std::size_t& word_end) = 0;
 };
 
 template <class E> class NoLanguage: public LanguageInterface<E> {
@@ -402,6 +410,10 @@ public:
 	void invalidate(std::size_t index) override {}
 	void highlight(const E& buffer, JSONWriter& writer, std::size_t index0, std::size_t index1) override {
 		writer.write_array([](JSONArrayWriter& writer) {});
+	}
+	void get_word(const E& buffer, std::size_t index, std::size_t& word_start, std::size_t& word_end) override {
+		word_start = index;
+		word_end = index;
 	}
 };
 
@@ -413,20 +425,20 @@ public:
 	void invalidate(std::size_t index) override {
 		source_node = nullptr;
 	}
-	static void get_spans(std::size_t index0, std::size_t index1, std::vector<Span>& spans, const std::unique_ptr<SourceNode>& node, std::size_t index = 0, int outer_style = 1) {
+	static void get_spans(std::size_t index0, std::size_t index1, std::vector<Span>& spans, const std::unique_ptr<SourceNode>& node, std::size_t index = 0, int outer_style = Style::DEFAULT) {
 		if (index > index1) return;
 		std::size_t end_index = index + node->get_length();
 		if (end_index < index0) return;
-		const int style = node->get_style() ? node->get_style() : outer_style;
+		const int style = node->get_style() >= Style::DEFAULT ? node->get_style() : outer_style;
 		if (node->get_children().empty()) {
 			index = std::max(index, index0) - index0;
 			end_index = std::min(end_index, index1) - index0;
 			if (index != end_index) {
-				if (!spans.empty() && spans.back().last == index && spans.back().style == style - 1) {
+				if (!spans.empty() && spans.back().last == index && spans.back().style == style) {
 					spans.back().last = end_index;
 				}
 				else {
-					spans.emplace_back(index, end_index, style - 1);
+					spans.emplace_back(index, end_index, style);
 				}
 			}
 		}
@@ -435,6 +447,20 @@ public:
 				get_spans(index0, index1, spans, child, index, style);
 				index += child->get_length();
 			}
+		}
+	}
+	static void get_word(std::size_t index, std::size_t& word_start, std::size_t& word_end, const std::unique_ptr<SourceNode>& node, std::size_t start_index = 0) {
+		if (start_index > index) return;
+		std::size_t end_index = start_index + node->get_length();
+		if (end_index < index) return;
+		if (node->get_style() == Style::WORD) {
+			word_start = start_index;
+			word_end = end_index;
+			return;
+		}
+		for (const auto& child: node->get_children()) {
+			get_word(index, word_start, word_end, child, start_index);
+			start_index += child->get_length();
 		}
 	}
 	void highlight(const E& buffer, JSONWriter& writer, std::size_t index0, std::size_t index1) override {
@@ -454,10 +480,23 @@ public:
 				writer.write_element().write_array([&](JSONArrayWriter& writer) {
 					writer.write_element().write_number(span.first);
 					writer.write_element().write_number(span.last);
-					writer.write_element().write_number(span.style);
+					writer.write_element().write_number(span.style - Style::DEFAULT);
 				});
 			}
 		});
+	}
+	void get_word(const E& buffer, std::size_t index, std::size_t& word_start, std::size_t& word_end) override {
+		word_start = index;
+		word_end = index;
+		if (buffer.get_size() > 10000) {
+			return;
+		}
+		if (source_node == nullptr) {
+			Timer timer("syntax.match");
+			auto i = buffer.begin();
+			source_node = syntax.match(i, buffer.end());
+		}
+		get_word(index, word_start, word_end, source_node);
 	}
 };
 

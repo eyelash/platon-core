@@ -62,17 +62,17 @@ constexpr auto java_number = sequence(
 
 constexpr auto java_syntax = repetition(choice(
 	// comments
-	highlight(1, c_comment),
+	highlight(Style::COMMENT, c_comment),
 	// numbers
-	highlight(4, java_number),
+	highlight(Style::LITERAL, java_number),
 	// literals
-	highlight(4, java_keywords(
+	highlight(Style::LITERAL, java_keywords(
 		"null",
 		"false",
 		"true"
 	)),
 	// keywords
-	highlight(2, java_keywords(
+	highlight(Style::KEYWORD, java_keywords(
 		"this",
 		"var",
 		"if",
@@ -107,7 +107,7 @@ constexpr auto java_syntax = repetition(choice(
 		"package"
 	)),
 	// types
-	highlight(3, java_keywords(
+	highlight(Style::TYPE, java_keywords(
 		"void",
 		"boolean",
 		"char",

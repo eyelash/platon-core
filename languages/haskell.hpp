@@ -20,12 +20,12 @@ constexpr HaskellBlockComment haskell_block_comment() {
 
 constexpr auto haskell_syntax = repetition(choice(
 	// comments
-	highlight(1, choice(
+	highlight(Style::COMMENT, choice(
 		haskell_block_comment(),
 		sequence("--", repetition(but('\n')))
 	)),
 	// keywords
-	highlight(2, c_keywords(
+	highlight(Style::KEYWORD, c_keywords(
 		"if",
 		"then",
 		"else",
@@ -44,7 +44,7 @@ constexpr auto haskell_syntax = repetition(choice(
 		"import"
 	)),
 	// types
-	highlight(3, sequence(range('A', 'Z'), repetition(haskell_identifier_char))),
+	highlight(Style::TYPE, sequence(range('A', 'Z'), repetition(haskell_identifier_char))),
 	// identifiers
 	sequence(choice(range('a', 'z'), '_'), repetition(haskell_identifier_char)),
 	any_char()

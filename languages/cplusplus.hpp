@@ -1,18 +1,18 @@
 constexpr auto cplusplus_syntax = repetition(choice(
 	// comments
-	highlight(1, c_comment),
+	highlight(Style::COMMENT, c_comment),
 	// strings and characters
-	highlight(4, c_string_or_character),
+	highlight(Style::LITERAL, c_string_or_character),
 	// numbers
-	highlight(4, c_number),
+	highlight(Style::LITERAL, c_number),
 	// literals
-	highlight(4, c_keywords(
+	highlight(Style::LITERAL, c_keywords(
 		"nullptr",
 		"false",
 		"true"
 	)),
 	// keywords
-	highlight(2, c_keywords(
+	highlight(Style::KEYWORD, c_keywords(
 		"this",
 		"auto",
 		"constexpr",
@@ -60,7 +60,7 @@ constexpr auto cplusplus_syntax = repetition(choice(
 		"export"
 	)),
 	// types
-	highlight(3, c_keywords(
+	highlight(Style::TYPE, c_keywords(
 		"void",
 		"bool",
 		"char",

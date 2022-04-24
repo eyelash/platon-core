@@ -38,17 +38,17 @@ constexpr auto javascript_number = sequence(
 
 constexpr auto javascript_syntax = repetition(choice(
 	// comments
-	highlight(1, c_comment),
+	highlight(Style::COMMENT, c_comment),
 	// numbers
-	highlight(4, javascript_number),
+	highlight(Style::LITERAL, javascript_number),
 	// literals
-	highlight(4, java_keywords(
+	highlight(Style::LITERAL, java_keywords(
 		"null",
 		"false",
 		"true"
 	)),
 	// keywords
-	highlight(2, java_keywords(
+	highlight(Style::KEYWORD, java_keywords(
 		"function",
 		"this",
 		"var",
