@@ -40,6 +40,12 @@ constexpr auto c_number = sequence(
 				one_or_more(range('0', '9'))
 			))
 		),
+		// binary
+		sequence(
+			'0',
+			choice('b', 'B'),
+			one_or_more(range('0', '1'))
+		),
 		// decimal or octal
 		sequence(
 			choice(
