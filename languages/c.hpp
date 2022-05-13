@@ -24,39 +24,51 @@ constexpr auto c_string_or_character = sequence(
 		optional('\'')
 	))
 );
+constexpr auto c_digits = sequence(
+	range('0', '9'),
+	repetition(sequence(optional('\''), range('0', '9')))
+);
+constexpr auto c_hex_digits = sequence(
+	hex_digit,
+	repetition(sequence(optional('\''), hex_digit))
+);
+constexpr auto c_binary_digits = sequence(
+	range('0', '1'),
+	repetition(sequence(optional('\''), range('0', '1')))
+);
 constexpr auto c_number = sequence(
 	choice(
 		// hex
 		sequence(
 			'0',
 			choice('x', 'X'),
-			zero_or_more(hex_digit),
+			optional(c_hex_digits),
 			optional('.'),
-			zero_or_more(hex_digit),
+			optional(c_hex_digits),
 			// exponent
 			optional(sequence(
 				choice('p', 'P'),
 				optional(choice('+', '-')),
-				one_or_more(range('0', '9'))
+				c_digits
 			))
 		),
 		// binary
 		sequence(
 			'0',
 			choice('b', 'B'),
-			one_or_more(range('0', '1'))
+			c_binary_digits
 		),
 		// decimal or octal
 		sequence(
 			choice(
-				sequence(one_or_more(range('0', '9')), optional('.'), zero_or_more(range('0', '9'))),
-				sequence('.', one_or_more(range('0', '9')))
+				sequence(c_digits, optional('.'), optional(c_digits)),
+				sequence('.', c_digits)
 			),
 			// exponent
 			optional(sequence(
 				choice('e', 'E'),
 				optional(choice('+', '-')),
-				one_or_more(range('0', '9'))
+				c_digits
 			))
 		)
 	),
