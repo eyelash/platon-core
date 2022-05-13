@@ -4,15 +4,15 @@ constexpr auto cplusplus_syntax = repetition(choice(
 	// strings and characters
 	highlight(Style::LITERAL, c_string_or_character),
 	// numbers
-	highlight(Style::LITERAL, c_number),
+	highlight(Style::WORD, highlight(Style::LITERAL, c_number)),
 	// literals
-	highlight(Style::LITERAL, c_keywords(
+	highlight(Style::WORD, highlight(Style::LITERAL, c_keywords(
 		"nullptr",
 		"false",
 		"true"
-	)),
+	))),
 	// keywords
-	highlight(Style::KEYWORD, c_keywords(
+	highlight(Style::WORD, highlight(Style::KEYWORD, c_keywords(
 		"this",
 		"auto",
 		"constexpr",
@@ -58,9 +58,9 @@ constexpr auto cplusplus_syntax = repetition(choice(
 		"module",
 		"import",
 		"export"
-	)),
+	))),
 	// types
-	highlight(Style::TYPE, c_keywords(
+	highlight(Style::WORD, highlight(Style::TYPE, c_keywords(
 		"void",
 		"bool",
 		"char",
@@ -73,8 +73,8 @@ constexpr auto cplusplus_syntax = repetition(choice(
 		"signed",
 		"const",
 		"volatile"
-	)),
+	))),
 	// identifiers
-	sequence(c_identifier_begin_char, repetition(c_identifier_char)),
+	highlight(Style::WORD, sequence(c_identifier_begin_char, zero_or_more(c_identifier_char))),
 	any_char()
 ));

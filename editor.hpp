@@ -429,6 +429,42 @@ public:
 		}
 		collapse_selections(false);
 	}
+	void move_to_beginning_of_word(bool extend_selection = false) {
+		for (Selection& selection: selections) {
+			std::size_t word_start, word_end;
+			language->get_previous_word(buffer, selection.last, word_start, word_end);
+			if (extend_selection) {
+				selection.last = word_start;
+			}
+			else {
+				if (selection.first == selection.last) {
+					selection.first = selection.last = word_start;
+				}
+				else {
+					selection.first = selection.last = selection.min();
+				}
+			}
+		}
+		collapse_selections(true);
+	}
+	void move_to_end_of_word(bool extend_selection = false) {
+		for (Selection& selection: selections) {
+			std::size_t word_start, word_end;
+			language->get_next_word(buffer, selection.last, word_start, word_end);
+			if (extend_selection) {
+				selection.last = word_end;
+			}
+			else {
+				if (selection.first == selection.last) {
+					selection.first = selection.last = word_end;
+				}
+				else {
+					selection.first = selection.last = selection.max();
+				}
+			}
+		}
+		collapse_selections(false);
+	}
 	void move_to_beginning_of_line(bool extend_selection = false) {
 		for (Selection& selection: selections) {
 			selection.last = buffer.get_index(buffer.get_line(selection.last));

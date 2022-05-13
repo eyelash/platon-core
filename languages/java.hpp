@@ -120,6 +120,6 @@ constexpr auto java_syntax = repetition(choice(
 		"String"
 	)),
 	// identifiers
-	sequence(java_identifier_begin_char, repetition(java_identifier_char)),
+	highlight(Style::WORD, sequence(java_identifier_begin_char, zero_or_more(java_identifier_char))),
 	any_char()
 ));

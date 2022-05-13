@@ -23,6 +23,8 @@ void platon_editor_move_left(PlatonEditor* editor, int extend_selection);
 void platon_editor_move_right(PlatonEditor* editor, int extend_selection);
 void platon_editor_move_up(PlatonEditor* editor, int extend_selection);
 void platon_editor_move_down(PlatonEditor* editor, int extend_selection);
+void platon_editor_move_to_beginning_of_word(PlatonEditor* editor, int extend_selection);
+void platon_editor_move_to_end_of_word(PlatonEditor* editor, int extend_selection);
 void platon_editor_move_to_beginning_of_line(PlatonEditor* editor, int extend_selection);
 void platon_editor_move_to_end_of_line(PlatonEditor* editor, int extend_selection);
 void platon_editor_select_all(PlatonEditor* editor);

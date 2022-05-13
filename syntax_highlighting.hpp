@@ -403,6 +403,8 @@ public:
 	virtual void invalidate(std::size_t index) = 0;
 	virtual void highlight(const E& buffer, JSONWriter& writer, std::size_t index0, std::size_t index1) = 0;
 	virtual void get_word(const E& buffer, std::size_t index, std::size_t& word_start, std::size_t& word_end) = 0;
+	virtual void get_next_word(const E& buffer, std::size_t index, std::size_t& word_start, std::size_t& word_end) = 0;
+	virtual void get_previous_word(const E& buffer, std::size_t index, std::size_t& word_start, std::size_t& word_end) = 0;
 };
 
 template <class E> class NoLanguage: public LanguageInterface<E> {
@@ -412,8 +414,13 @@ public:
 		writer.write_array([](JSONArrayWriter& writer) {});
 	}
 	void get_word(const E& buffer, std::size_t index, std::size_t& word_start, std::size_t& word_end) override {
-		word_start = index;
-		word_end = index;
+		word_start = word_end = index;
+	}
+	void get_next_word(const E& buffer, std::size_t index, std::size_t& word_start, std::size_t& word_end) override {
+		word_start = word_end = index;
+	}
+	void get_previous_word(const E& buffer, std::size_t index, std::size_t& word_start, std::size_t& word_end) override {
+		word_start = word_end = index;
 	}
 };
 
@@ -449,19 +456,50 @@ public:
 			}
 		}
 	}
-	static void get_word(std::size_t index, std::size_t& word_start, std::size_t& word_end, const std::unique_ptr<SourceNode>& node, std::size_t start_index = 0) {
-		if (start_index > index) return;
+	static bool get_word(std::size_t index, std::size_t& word_start, std::size_t& word_end, const std::unique_ptr<SourceNode>& node, std::size_t start_index = 0) {
+		if (start_index > index) return false;
 		std::size_t end_index = start_index + node->get_length();
-		if (end_index < index) return;
+		if (end_index < index) return false;
 		if (node->get_style() == Style::WORD) {
 			word_start = start_index;
 			word_end = end_index;
-			return;
+			return true;
 		}
 		for (const auto& child: node->get_children()) {
-			get_word(index, word_start, word_end, child, start_index);
+			if (get_word(index, word_start, word_end, child, start_index)) return true;
 			start_index += child->get_length();
 		}
+		return false;
+	}
+	static bool get_next_word(std::size_t index, std::size_t& word_start, std::size_t& word_end, const std::unique_ptr<SourceNode>& node, std::size_t start_index = 0) {
+		std::size_t end_index = start_index + node->get_length();
+		if (end_index <= index) return false;
+		if (node->get_style() == Style::WORD) {
+			word_start = start_index;
+			word_end = end_index;
+			return true;
+		}
+		for (auto i = node->get_children().begin(); i != node->get_children().end(); ++i) {
+			const auto& child = *i;
+			if (get_next_word(index, word_start, word_end, child, start_index)) return true;
+			start_index += child->get_length();
+		}
+		return false;
+	}
+	static bool get_previous_word(std::size_t index, std::size_t& word_start, std::size_t& word_end, const std::unique_ptr<SourceNode>& node, std::size_t start_index = 0) {
+		if (start_index >= index) return false;
+		std::size_t end_index = start_index + node->get_length();
+		if (node->get_style() == Style::WORD) {
+			word_start = start_index;
+			word_end = end_index;
+			return true;
+		}
+		for (auto i = node->get_children().rbegin(); i != node->get_children().rend(); ++i) {
+			const auto& child = *i;
+			end_index -= child->get_length();
+			if (get_previous_word(index, word_start, word_end, child, end_index)) return true;
+		}
+		return false;
 	}
 	void highlight(const E& buffer, JSONWriter& writer, std::size_t index0, std::size_t index1) override {
 		if (buffer.get_size() > 10000) {
@@ -492,11 +530,36 @@ public:
 			return;
 		}
 		if (source_node == nullptr) {
-			Timer timer("syntax.match");
 			auto i = buffer.begin();
 			source_node = syntax.match(i, buffer.end());
 		}
 		get_word(index, word_start, word_end, source_node);
+	}
+	void get_next_word(const E& buffer, std::size_t index, std::size_t& word_start, std::size_t& word_end) override {
+		if (buffer.get_size() > 10000) {
+			word_start = word_end = buffer.get_size() - 1;
+			return;
+		}
+		if (source_node == nullptr) {
+			auto i = buffer.begin();
+			source_node = syntax.match(i, buffer.end());
+		}
+		if (!get_next_word(index, word_start, word_end, source_node)) {
+			word_start = word_end = buffer.get_size() - 1;
+		}
+	}
+	void get_previous_word(const E& buffer, std::size_t index, std::size_t& word_start, std::size_t& word_end) override {
+		if (buffer.get_size() > 10000) {
+			word_start = word_end = 0;
+			return;
+		}
+		if (source_node == nullptr) {
+			auto i = buffer.begin();
+			source_node = syntax.match(i, buffer.end());
+		}
+		if (!get_previous_word(index, word_start, word_end, source_node)) {
+			word_start = word_end = 0;
+		}
 	}
 };
 

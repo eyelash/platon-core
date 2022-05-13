@@ -70,9 +70,9 @@ constexpr auto c_syntax = repetition(choice(
 	// strings and characters
 	highlight(Style::LITERAL, c_string_or_character),
 	// numbers
-	highlight(Style::LITERAL, c_number),
+	highlight(Style::WORD, highlight(Style::LITERAL, c_number)),
 	// keywords
-	highlight(Style::KEYWORD, c_keywords(
+	highlight(Style::WORD, highlight(Style::KEYWORD, c_keywords(
 		"if",
 		"else",
 		"for",
@@ -93,7 +93,7 @@ constexpr auto c_syntax = repetition(choice(
 		"static",
 		"extern",
 		"inline"
-	)),
+	))),
 	// types
 	highlight(Style::WORD, highlight(Style::TYPE, c_keywords(
 		"void",
