@@ -191,7 +191,7 @@ class Editor {
 					buffer.remove(selection.min());
 					++offset;
 				}
-				selection.first = selection.last = selection.min();
+				selection = selection.min();
 			}
 		}
 	}
@@ -215,7 +215,7 @@ public:
 	std::size_t get_total_lines() const {
 		return buffer.get_total_lines();
 	}
-	const char* render(std::size_t first_line, std::size_t last_line) {
+	const char* render(std::size_t first_line, std::size_t last_line) const {
 		static std::string json;
 		json.clear();
 		JSONWriter writer(json);
@@ -272,25 +272,15 @@ public:
 		std::size_t offset = 0;
 		for (Selection& selection: selections) {
 			selection -= offset;
-			if (selection.first == selection.last) {
-				if (selection.last > 0) {
-					std::size_t new_index = get_previous_index(selection.last);
-					language->invalidate(new_index);
-					for (std::size_t i = new_index; i < selection.last; ++i) {
-						buffer.remove(new_index);
-						++offset;
-					}
-					selection.first = selection.last = new_index;
-				}
+			if (selection.first == selection.last && selection.last > 0) {
+				selection.last = get_previous_index(selection.last);
 			}
-			else {
-				language->invalidate(selection.min());
-				for (std::size_t i = selection.min(); i < selection.max(); ++i) {
-					buffer.remove(selection.min());
-					++offset;
-				}
-				selection.first = selection.last = selection.min();
+			language->invalidate(selection.min());
+			for (std::size_t i = selection.min(); i < selection.max(); ++i) {
+				buffer.remove(selection.min());
+				++offset;
 			}
+			selection = selection.min();
 		}
 		collapse_selections(true);
 	}
@@ -299,26 +289,16 @@ public:
 		std::size_t offset = 0;
 		for (Selection& selection: selections) {
 			selection -= offset;
-			if (selection.first == selection.last) {
-				if (selection.last < last) {
-					std::size_t new_index = get_next_index(selection.last);
-					language->invalidate(selection.last);
-					for (std::size_t i = selection.last; i < new_index; ++i) {
-						buffer.remove(selection.last);
-						--last;
-						++offset;
-					}
-				}
+			if (selection.first == selection.last && selection.last < last) {
+				selection.last = get_next_index(selection.last);
 			}
-			else {
-				language->invalidate(selection.min());
-				for (std::size_t i = selection.min(); i < selection.max(); ++i) {
-					buffer.remove(selection.min());
-					--last;
-					++offset;
-				}
-				selection.first = selection.last = selection.min();
+			language->invalidate(selection.min());
+			for (std::size_t i = selection.min(); i < selection.max(); ++i) {
+				buffer.remove(selection.min());
+				--last;
+				++offset;
 			}
+			selection = selection.min();
 		}
 		collapse_selections(false);
 	}
@@ -347,11 +327,11 @@ public:
 			else {
 				if (selection.first == selection.last) {
 					if (selection.last > 0) {
-						selection.first = selection.last = get_previous_index(selection.last);
+						selection = get_previous_index(selection.last);
 					}
 				}
 				else {
-					selection.first = selection.last = selection.min();
+					selection = selection.min();
 				}
 			}
 		}
@@ -368,11 +348,11 @@ public:
 			else {
 				if (selection.first == selection.last) {
 					if (selection.last < last) {
-						selection.first = selection.last = get_next_index(selection.last);
+						selection = get_next_index(selection.last);
 					}
 				}
 				else {
-					selection.first = selection.last = selection.max();
+					selection = selection.max();
 				}
 			}
 		}
@@ -396,11 +376,11 @@ public:
 			else {
 				if (selection.first == selection.last) {
 					if (line > 0) {
-						selection.first = selection.last = get_index2(column, line - 1);
+						selection = get_index2(column, line - 1);
 					}
 				}
 				else {
-					selection.first = selection.last = selection.min();
+					selection = selection.min();
 				}
 			}
 		}
@@ -419,11 +399,11 @@ public:
 			else {
 				if (selection.first == selection.last) {
 					if (line < last_line) {
-						selection.first = selection.last = get_index2(column, line + 1);
+						selection = get_index2(column, line + 1);
 					}
 				}
 				else {
-					selection.first = selection.last = selection.max();
+					selection = selection.max();
 				}
 			}
 		}
@@ -438,10 +418,10 @@ public:
 			}
 			else {
 				if (selection.first == selection.last) {
-					selection.first = selection.last = word_start;
+					selection = word_start;
 				}
 				else {
-					selection.first = selection.last = selection.min();
+					selection = selection.min();
 				}
 			}
 		}
@@ -456,10 +436,10 @@ public:
 			}
 			else {
 				if (selection.first == selection.last) {
-					selection.first = selection.last = word_end;
+					selection = word_end;
 				}
 				else {
-					selection.first = selection.last = selection.max();
+					selection = selection.max();
 				}
 			}
 		}

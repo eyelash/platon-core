@@ -57,14 +57,18 @@ enum class Weight: int {
 
 class Style {
 public:
+	static constexpr int BOLD = 1 << 0;
+	static constexpr int ITALIC = 1 << 1;
 	Color color;
 	Weight weight;
 	bool italic;
 	constexpr Style(const Color& color, Weight weight = Weight::NORMAL, bool italic = false): color(color), weight(weight), italic(italic) {}
+	constexpr Style(const Color& color, int attributes): color(color), weight(attributes & BOLD ? Weight::BOLD : Weight::NORMAL), italic(attributes & ITALIC) {}
 	void write(JSONWriter& writer) const {
 		writer.write_object([&](JSONObjectWriter& writer) {
 			color.write(writer.write_member("color"));
 			writer.write_member("weight").write_number(static_cast<int>(weight));
+			writer.write_member("bold").write_boolean(weight == Weight::BOLD);
 			writer.write_member("italic").write_boolean(italic);
 		});
 	}
@@ -142,37 +146,12 @@ public:
 	}
 };
 
-class Char {
-	char c;
+template <class F> class Char {
+	F f;
 public:
-	constexpr Char(char c): c(c) {}
+	constexpr Char(F f): f(f) {}
 	template <class I> std::unique_ptr<SourceNode> match(I& i, const I& end) const {
-		if (i != end && *i == c) {
-			++i;
-			return std::make_unique<SourceNode>(1);
-		}
-		return nullptr;
-	}
-};
-
-class Range {
-	char first;
-	char last;
-public:
-	constexpr Range(char first, char last): first(first), last(last) {}
-	template <class I> std::unique_ptr<SourceNode> match(I& i, const I& end) const {
-		if (i != end && *i >= first && *i <= last) {
-			++i;
-			return std::make_unique<SourceNode>(1);
-		}
-		return nullptr;
-	}
-};
-
-class AnyChar {
-public:
-	template <class I> std::unique_ptr<SourceNode> match(I& i, const I& end) const {
-		if (i != end) {
+		if (i != end && f(*i)) {
 			++i;
 			return std::make_unique<SourceNode>(1);
 		}
@@ -182,15 +161,14 @@ public:
 
 class String {
 	const char* string;
+	std::size_t length;
 public:
-	constexpr String(const char* string): string(string) {}
+	constexpr String(const char* string): string(string), length(std::char_traits<char>::length(string)) {}
 	template <class I> std::unique_ptr<SourceNode> match(I& i, const I& end) const {
 		const I begin = i;
-		std::size_t length = 0;
 		for (const char* s = string; *s != '\0'; ++s) {
 			if (i != end && *i == *s) {
 				++i;
-				++length;
 			}
 			else {
 				i = begin;
@@ -213,34 +191,39 @@ public:
 	constexpr CaseInsensitiveString(const char* string): string(string) {}
 };
 
-template <class... T> class Sequence;
-template <> class Sequence<> {
+template <class... T> class PartialSequence;
+template <> class PartialSequence<> {
 public:
+	constexpr PartialSequence() {}
 	template <class I> bool match(I& i, const I& end, std::vector<std::unique_ptr<SourceNode>>& source_children) const {
 		return true;
 	}
-	template <class I> std::unique_ptr<SourceNode> match(I& i, const I& end) const {
-		return std::make_unique<SourceNode>(0);
-	}
 };
-template <class T0, class... T> class Sequence<T0, T...> {
+template <class T0, class... T> class PartialSequence<T0, T...> {
 	T0 t0;
-	Sequence<T...> sequence;
+	PartialSequence<T...> sequence;
 public:
-	constexpr Sequence(const T0& t0, const T&... t): t0(t0), sequence(t...) {}
+	constexpr PartialSequence(T0 t0, T... t): t0(t0), sequence(t...) {}
 	template <class I> bool match(I& i, const I& end, std::vector<std::unique_ptr<SourceNode>>& source_children) const {
 		if (auto source_node = t0.match(i, end)) {
-			source_children.emplace_back(std::move(source_node));
+			if (source_node->get_length() > 0) {
+				source_children.emplace_back(std::move(source_node));
+			}
 			return sequence.match(i, end, source_children);
 		}
 		else {
 			return false;
 		}
 	}
+};
+template <class... T> class Sequence {
+	PartialSequence<T...> sequence;
+public:
+	constexpr Sequence(T... t): sequence(t...) {}
 	template <class I> std::unique_ptr<SourceNode> match(I& i, const I& end) const {
 		const I begin = i;
 		std::vector<std::unique_ptr<SourceNode>> source_children;
-		if (match(i, end, source_children)) {
+		if (sequence.match(i, end, source_children)) {
 			return std::make_unique<SourceNode>(std::move(source_children));
 		}
 		else {
@@ -249,7 +232,6 @@ public:
 		}
 	}
 };
-template <class... T> Sequence(const T&...) -> Sequence<T...>;
 
 template <class... T> class Choice;
 template <> class Choice<> {
@@ -262,7 +244,7 @@ template <class T0, class... T> class Choice<T0, T...> {
 	T0 t0;
 	Choice<T...> choice;
 public:
-	constexpr Choice(const T0& t0, const T&... t): t0(t0), choice(t...) {}
+	constexpr Choice(T0 t0, T... t): t0(t0), choice(t...) {}
 	template <class I> std::unique_ptr<SourceNode> match(I& i, const I& end) const {
 		if (auto source_node = t0.match(i, end)) {
 			return source_node;
@@ -272,12 +254,12 @@ public:
 		}
 	}
 };
-template <class... T> Choice(const T&...) -> Choice<T...>;
+template <class... T> Choice(T...) -> Choice<T...>;
 
 template <class T> class Repetition {
 	T t;
 public:
-	constexpr Repetition(const T& t): t(t) {}
+	constexpr Repetition(T t): t(t) {}
 	template <class I> std::unique_ptr<SourceNode> match(I& i, const I& end) const {
 		std::vector<std::unique_ptr<SourceNode>> source_children;
 		while (auto source_node = t.match(i, end)) {
@@ -290,7 +272,7 @@ public:
 template <class T> class Optional {
 	T t;
 public:
-	constexpr Optional(const T& t): t(t) {}
+	constexpr Optional(T t): t(t) {}
 	template <class I> std::unique_ptr<SourceNode> match(I& i, const I& end) const {
 		if (auto source_node = t.match(i, end)) {
 			return source_node;
@@ -304,7 +286,7 @@ public:
 template <class T> class Not {
 	T t;
 public:
-	constexpr Not(const T& t): t(t) {}
+	constexpr Not(T t): t(t) {}
 	template <class I> std::unique_ptr<SourceNode> match(I& i, const I& end) const {
 		const I begin = i;
 		if (t.match(i, end)) {
@@ -317,21 +299,11 @@ public:
 	}
 };
 
-template <class T> class But {
-	T t;
-public:
-	constexpr But(const T& t): t(t) {}
-};
-
-class End {
-public:
-};
-
 template <class T> class Highlight {
 	T t;
 	int style;
 public:
-	constexpr Highlight(const T& t, int style): t(t), style(style) {}
+	constexpr Highlight(T t, int style): t(t), style(style) {}
 	template <class I> std::unique_ptr<SourceNode> match(I& i, const I& end) const {
 		if (auto source_node = t.match(i, end)) {
 			return std::make_unique<SourceNode>(std::move(source_node), style);
@@ -342,8 +314,10 @@ public:
 	}
 };
 
-constexpr Char get_language_node(char c) {
-	return Char(c);
+constexpr auto get_language_node(char c) {
+	return Char([c](char i) {
+		return i == c;
+	});
 }
 constexpr String get_language_node(const char* s) {
 	return String(s);
@@ -352,11 +326,15 @@ template <class T> constexpr T get_language_node(T language_node) {
 	return language_node;
 }
 
-constexpr Range range(char first, char last) {
-	return Range(first, last);
+constexpr auto range(char first, char last) {
+	return Char([first, last](char c) {
+		return c >= first && c <= last;
+	});
 }
-constexpr AnyChar any_char() {
-	return AnyChar();
+constexpr auto any_char() {
+	return Char([](char c) {
+		return true;
+	});
 }
 template <class... T> constexpr auto sequence(T... children) {
 	return Sequence(get_language_node(children)...);
@@ -424,11 +402,26 @@ public:
 	}
 };
 
+template <class T> class Reverse {
+	T& t;
+public:
+	Reverse(T& t): t(t) {}
+	auto begin() {
+		return t.rbegin();
+	}
+	auto end() {
+		return t.rend();
+	}
+};
+template <class T> Reverse<T> reverse(T& t) {
+	return Reverse<T>(t);
+}
+
 template <class E, class T> class LanguageImplementation: public LanguageInterface<E> {
 	T syntax;
 	std::unique_ptr<SourceNode> source_node;
 public:
-	LanguageImplementation(const T& syntax): syntax(syntax) {}
+	LanguageImplementation(T syntax): syntax(syntax) {}
 	void invalidate(std::size_t index) override {
 		source_node = nullptr;
 	}
@@ -440,7 +433,7 @@ public:
 		if (node->get_children().empty()) {
 			index = std::max(index, index0) - index0;
 			end_index = std::min(end_index, index1) - index0;
-			if (index != end_index) {
+			if (index != end_index && style != Style::DEFAULT) {
 				if (!spans.empty() && spans.back().last == index && spans.back().style == style) {
 					spans.back().last = end_index;
 				}
@@ -479,8 +472,7 @@ public:
 			word_end = end_index;
 			return true;
 		}
-		for (auto i = node->get_children().begin(); i != node->get_children().end(); ++i) {
-			const auto& child = *i;
+		for (const auto& child: node->get_children()) {
 			if (get_next_word(index, word_start, word_end, child, start_index)) return true;
 			start_index += child->get_length();
 		}
@@ -494,8 +486,7 @@ public:
 			word_end = end_index;
 			return true;
 		}
-		for (auto i = node->get_children().rbegin(); i != node->get_children().rend(); ++i) {
-			const auto& child = *i;
+		for (const auto& child: reverse(node->get_children())) {
 			end_index -= child->get_length();
 			if (get_previous_word(index, word_start, word_end, child, end_index)) return true;
 		}
@@ -524,20 +515,21 @@ public:
 		});
 	}
 	void get_word(const E& buffer, std::size_t index, std::size_t& word_start, std::size_t& word_end) override {
-		word_start = index;
-		word_end = index;
 		if (buffer.get_size() > 10000) {
+			word_start = word_end = index;
 			return;
 		}
 		if (source_node == nullptr) {
 			auto i = buffer.begin();
 			source_node = syntax.match(i, buffer.end());
 		}
-		get_word(index, word_start, word_end, source_node);
+		if (!get_word(index, word_start, word_end, source_node)) {
+			word_start = word_end = index;
+		}
 	}
 	void get_next_word(const E& buffer, std::size_t index, std::size_t& word_start, std::size_t& word_end) override {
 		if (buffer.get_size() > 10000) {
-			word_start = word_end = buffer.get_size() - 1;
+			word_start = word_end = index;
 			return;
 		}
 		if (source_node == nullptr) {
@@ -550,7 +542,7 @@ public:
 	}
 	void get_previous_word(const E& buffer, std::size_t index, std::size_t& word_start, std::size_t& word_end) override {
 		if (buffer.get_size() > 10000) {
-			word_start = word_end = 0;
+			word_start = word_end = index;
 			return;
 		}
 		if (source_node == nullptr) {
