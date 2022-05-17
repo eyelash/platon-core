@@ -1,8 +1,58 @@
+class CplusplusRawStringDelimiterStart {
+	std::string& delimiter;
+public:
+	CplusplusRawStringDelimiterStart(std::string& delimiter): delimiter(delimiter) {}
+	static constexpr bool is_delimiter_char(char c) {
+		return c >= 0x21 && c <= 0x7E && c != '(' && c != '\\';
+	}
+	template <class I> std::unique_ptr<SourceNode> match(I& i, const I& end) const {
+		return repetition(Char([this](char c) {
+			if (is_delimiter_char(c)) {
+				delimiter.push_back(c);
+				return true;
+			}
+			return false;
+		})).match(i, end);
+	}
+};
+class CplusplusRawStringDelimiterEnd {
+	std::string& delimiter;
+public:
+	CplusplusRawStringDelimiterEnd(std::string& delimiter): delimiter(delimiter) {}
+	template <class I> std::unique_ptr<SourceNode> match(I& i, const I& end) const {
+		return String(delimiter.c_str()).match(i, end);
+	}
+};
+inline CplusplusRawStringDelimiterStart cplusplus_raw_string_delimiter_start(std::string& delimiter) {
+	return CplusplusRawStringDelimiterStart(delimiter);
+}
+
+class CplusplusRawString {
+public:
+	constexpr CplusplusRawString() {}
+	template <class I> std::unique_ptr<SourceNode> match(I& i, const I& end) const {
+		std::string delimiter;
+		return sequence(
+			optional(choice('L', "u8", 'u', 'U')),
+			"R\"",
+			CplusplusRawStringDelimiterStart(delimiter),
+			'(',
+			repetition(but(sequence(')', CplusplusRawStringDelimiterEnd(delimiter), '\"'))),
+			optional(sequence(')', CplusplusRawStringDelimiterEnd(delimiter), '\"'))
+		).match(i, end);
+	}
+};
+constexpr CplusplusRawString cplusplus_raw_string() {
+	return CplusplusRawString();
+}
+
 constexpr auto cplusplus_syntax = repetition(choice(
 	// comments
 	highlight(Style::COMMENT, c_comment),
 	// strings and characters
-	highlight(Style::LITERAL, c_string_or_character),
+	highlight(Style::WORD, highlight(Style::LITERAL, cplusplus_raw_string())),
+	highlight(Style::WORD, highlight(Style::LITERAL, c_string)),
+	highlight(Style::WORD, highlight(Style::LITERAL, c_character)),
 	// numbers
 	highlight(Style::WORD, highlight(Style::LITERAL, c_number)),
 	// literals

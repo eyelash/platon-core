@@ -12,17 +12,17 @@ constexpr auto c_comment = choice(
 	sequence("//", repetition(but('\n')))
 );
 constexpr auto c_escape = sequence('\\', any_char());
-constexpr auto c_string_or_character = sequence(
+constexpr auto c_string = sequence(
 	optional(choice('L', "u8", 'u', 'U')),
-	choice(sequence(
-		'"',
-		repetition(choice(c_escape, but('"'))),
-		optional('"')
-	), sequence(
-		'\'',
-		repetition(choice(c_escape, but('\''))),
-		optional('\'')
-	))
+	'"',
+	repetition(choice(c_escape, but(choice('"', '\n')))),
+	optional('"')
+);
+constexpr auto c_character = sequence(
+	optional(choice('L', "u8", 'u', 'U')),
+	'\'',
+	repetition(choice(c_escape, but(choice('\'', '\n')))),
+	optional('\'')
 );
 constexpr auto c_digits = sequence(
 	range('0', '9'),
@@ -80,7 +80,8 @@ constexpr auto c_syntax = repetition(choice(
 	// comments
 	highlight(Style::COMMENT, c_comment),
 	// strings and characters
-	highlight(Style::LITERAL, c_string_or_character),
+	highlight(Style::WORD, highlight(Style::LITERAL, c_string)),
+	highlight(Style::WORD, highlight(Style::LITERAL, c_character)),
 	// numbers
 	highlight(Style::WORD, highlight(Style::LITERAL, c_number)),
 	// keywords
