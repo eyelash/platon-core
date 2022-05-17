@@ -19,6 +19,7 @@ void platon_editor_delete_backward(PlatonEditor* editor);
 void platon_editor_delete_forward(PlatonEditor* editor);
 void platon_editor_set_cursor(PlatonEditor* editor, size_t column, size_t line);
 void platon_editor_toggle_cursor(PlatonEditor* editor, size_t column, size_t line);
+void platon_editor_extend_selection(PlatonEditor* editor, size_t column, size_t line);
 void platon_editor_move_left(PlatonEditor* editor, int extend_selection);
 void platon_editor_move_right(PlatonEditor* editor, int extend_selection);
 void platon_editor_move_up(PlatonEditor* editor, int extend_selection);

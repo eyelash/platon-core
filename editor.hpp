@@ -114,6 +114,9 @@ struct Selection {
 	std::size_t max() const {
 		return std::max(first, last);
 	}
+	bool is_reversed() const {
+		return first > last;
+	}
 };
 
 class Selections: public std::vector<Selection> {
@@ -121,25 +124,22 @@ public:
 	Selections() {
 		emplace_back(0);
 	}
-	template <class... A> void set_cursor(A&&... arguments) {
-		clear();
-		emplace_back(std::forward<A>(arguments)...);
-	}
-	void toggle_cursor(std::size_t cursor) {
+	bool find_selection(std::size_t cursor, std::size_t& index) const {
 		std::size_t i;
 		for (i = 0; i < size(); ++i) {
 			const Selection& selection = operator [](i);
 			if (selection.max() >= cursor) {
 				if (selection.min() <= cursor) {
-					erase(begin() + i);
-					return;
+					index = i;
+					return true;
 				}
 				else {
 					break;
 				}
 			}
 		}
-		emplace(begin() + i, cursor);
+		index = i;
+		return false;
 	}
 };
 
@@ -147,6 +147,7 @@ class Editor {
 	TextBuffer buffer;
 	std::unique_ptr<LanguageInterface<TextBuffer>> language;
 	Selections selections;
+	std::size_t last_selection;
 	void render_selections(JSONObjectWriter& writer, std::size_t index0, std::size_t index1) const {
 		writer.write_member("selections").write_array([&](JSONArrayWriter& writer) {
 			for (const Selection& selection: selections) {
@@ -204,14 +205,17 @@ class Editor {
 				else {
 					selections[i-1] = Selection(selections[i-1].min(), selections[i].max());
 				}
+				if (last_selection >= i) {
+					--last_selection;
+				}
 				selections.erase(selections.begin() + i);
 				--i;
 			}
 		}
 	}
 public:
-	Editor(): language(std::make_unique<NoLanguage<TextBuffer>>()) {}
-	Editor(const char* path): buffer(path), language(get_language(buffer, get_file_name(path))) {}
+	Editor(): language(std::make_unique<NoLanguage<TextBuffer>>()), last_selection(0) {}
+	Editor(const char* path): buffer(path), language(get_language(buffer, get_file_name(path))), last_selection(0) {}
 	std::size_t get_total_lines() const {
 		return buffer.get_total_lines();
 	}
@@ -312,10 +316,31 @@ public:
 		}
 	}
 	void set_cursor(std::size_t column, std::size_t line) {
-		selections.set_cursor(get_index(column, line));
+		selections.clear();
+		selections.emplace_back(get_index(column, line));
+		last_selection = 0;
 	}
 	void toggle_cursor(std::size_t column, std::size_t line) {
-		selections.toggle_cursor(get_index(column, line));
+		const std::size_t cursor = get_index(column, line);
+		std::size_t index;
+		if (selections.find_selection(cursor, index)) {
+			selections.erase(selections.begin() + index);
+			if (last_selection == index) {
+				last_selection = selections.size() - 1;
+			}
+			else if (last_selection > index) {
+				--last_selection;
+			}
+		}
+		else {
+			selections.emplace(selections.begin() + index, cursor);
+			last_selection = index;
+		}
+	}
+	void extend_selection(std::size_t column, std::size_t line) {
+		Selection& selection = selections[last_selection];
+		selection.last = get_index(column, line);
+		collapse_selections(selection.is_reversed());
 	}
 	void move_left(bool extend_selection = false) {
 		for (Selection& selection: selections) {
@@ -464,7 +489,9 @@ public:
 		collapse_selections(false);
 	}
 	void select_all() {
-		selections.set_cursor(0, buffer.get_size() - 1);
+		selections.clear();
+		selections.emplace_back(0, buffer.get_size() - 1);
+		last_selection = 0;
 	}
 	const char* get_theme() const {
 		static std::string json;
