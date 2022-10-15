@@ -146,16 +146,98 @@ public:
 	}
 };
 
+template <bool has_style> class SourceNodeResult {
+	std::unique_ptr<SourceNode> source_node;
+public:
+	SourceNodeResult(): source_node() {}
+	//SourceNodeResult(std::vector<std::unique_ptr<SourceNode>>&& children): source_node(std::make_unique<SourceNode>(std::move(children))) {}
+	//SourceNodeResult(std::unique_ptr<SourceNode>&& child, int style): source_node(std::make_unique<SourceNode>(std::move(child), style)) {}
+	template <class... A> SourceNodeResult(A&&... arguments): source_node(std::make_unique<SourceNode>(std::forward<A>(arguments)...)) {}
+	operator bool() const {
+		return static_cast<bool>(source_node);
+	}
+	std::size_t get_length() const {
+		return source_node->get_length();
+	}
+	std::unique_ptr<SourceNode> get_source_node() {
+		return std::move(source_node);
+	}
+};
+template <> class SourceNodeResult<false> {
+	std::size_t length;
+	bool match;
+public:
+	constexpr SourceNodeResult(): length(0), match(false) {}
+	constexpr SourceNodeResult(std::size_t length): length(length), match(true) {}
+	operator bool() const {
+		return match;
+	}
+	std::size_t get_length() const {
+		return length;
+	}
+	std::unique_ptr<SourceNode> get_source_node() {
+		return std::make_unique<SourceNode>(length);
+	}
+};
+
+template <bool has_style> class SourceNodeBuilder {
+	std::size_t length = 0;
+	std::vector<std::unique_ptr<SourceNode>> children;
+public:
+	void add_child(SourceNodeResult<true> child) {
+		const std::size_t child_length = child.get_length();
+		if (child_length > 0) {
+			length += child_length;
+			children.push_back(child.get_source_node());
+		}
+	}
+	void add_child(SourceNodeResult<false> child) {
+		const std::size_t child_length = child.get_length();
+		if (child_length > 0) {
+			length += child_length;
+			children.push_back(std::make_unique<SourceNode>(child_length));
+		}
+	}
+	SourceNodeResult<true> get_result() {
+		return SourceNodeResult<true>(std::move(children));
+	}
+	static SourceNodeResult<true> convert(SourceNodeResult<true> result) {
+		return result;
+	}
+	static SourceNodeResult<true> convert(SourceNodeResult<false> result) {
+		if (result) {
+			return SourceNodeResult<true>(result.get_length());
+		}
+		else {
+			return SourceNodeResult<true>();
+		}
+	}
+};
+template <> class SourceNodeBuilder<false> {
+	std::size_t length = 0;
+public:
+	void add_child(SourceNodeResult<false> child) {
+		length += child.get_length();
+	}
+	SourceNodeResult<false> get_result() {
+		return SourceNodeResult<false>(length);
+	}
+	static SourceNodeResult<false> convert(SourceNodeResult<false> result) {
+		return result;
+	}
+};
+
 template <class F> class Char {
 	F f;
 public:
+	static constexpr bool has_style = false;
 	constexpr Char(F f): f(f) {}
-	template <class I> std::unique_ptr<SourceNode> match(I& i, const I& end) const {
+	template <class I> SourceNodeResult<has_style> match(I& i, const I& end) const {
 		if (i != end && f(*i)) {
 			++i;
-			return std::make_unique<SourceNode>(1);
+			return SourceNodeResult<has_style>(1);
 		}
-		return nullptr;
+		return SourceNodeResult<has_style>();
 	}
 };
 
@@ -163,8 +245,9 @@ class String {
 	const char* string;
 	std::size_t length;
 public:
+	static constexpr bool has_style = false;
 	constexpr String(const char* string): string(string), length(std::char_traits<char>::length(string)) {}
-	template <class I> std::unique_ptr<SourceNode> match(I& i, const I& end) const {
+	template <class I> SourceNodeResult<has_style> match(I& i, const I& end) const {
 		const I begin = i;
 		for (const char* s = string; *s != '\0'; ++s) {
 			if (i != end && *i == *s) {
@@ -172,10 +255,10 @@ public:
 			}
 			else {
 				i = begin;
-				return nullptr;
+				return SourceNodeResult<has_style>();
 			}
 		}
-		return std::make_unique<SourceNode>(length);
+		return SourceNodeResult<has_style>(length);
 	}
 };
 
@@ -194,8 +277,9 @@ public:
 template <class... T> class PartialSequence;
 template <> class PartialSequence<> {
 public:
+	static constexpr bool partial_has_style = false;
 	constexpr PartialSequence() {}
-	template <class I> bool match(I& i, const I& end, std::vector<std::unique_ptr<SourceNode>>& source_children) const {
+	template <class I, bool has_style> bool match(I& i, const I& end, SourceNodeBuilder<has_style>& builder) const {
 		return true;
 	}
 };
@@ -203,13 +287,14 @@ template <class T0, class... T> class PartialSequence<T0, T...> {
 	T0 t0;
 	PartialSequence<T...> sequence;
 public:
+	static constexpr bool partial_has_style = T0::has_style || PartialSequence<T...>::partial_has_style;
 	constexpr PartialSequence(T0 t0, T... t): t0(t0), sequence(t...) {}
-	template <class I> bool match(I& i, const I& end, std::vector<std::unique_ptr<SourceNode>>& source_children) const {
+	template <class I, bool has_style> bool match(I& i, const I& end, SourceNodeBuilder<has_style>& builder) const {
 		if (auto source_node = t0.match(i, end)) {
-			if (source_node->get_length() > 0) {
-				source_children.emplace_back(std::move(source_node));
+			if (source_node.get_length() > 0) {
+				builder.add_child(std::move(source_node));
 			}
-			return sequence.match(i, end, source_children);
+			return sequence.match(i, end, builder);
 		}
 		else {
 			return false;
@@ -219,16 +304,17 @@ public:
 template <class... T> class Sequence {
 	PartialSequence<T...> sequence;
 public:
+	static constexpr bool has_style = PartialSequence<T...>::partial_has_style;
 	constexpr Sequence(T... t): sequence(t...) {}
-	template <class I> std::unique_ptr<SourceNode> match(I& i, const I& end) const {
+	template <class I> SourceNodeResult<has_style> match(I& i, const I& end) const {
 		const I begin = i;
-		std::vector<std::unique_ptr<SourceNode>> source_children;
-		if (sequence.match(i, end, source_children)) {
-			return std::make_unique<SourceNode>(std::move(source_children));
+		SourceNodeBuilder<has_style> builder;
+		if (sequence.match(i, end, builder)) {
+			return builder.get_result();
 		}
 		else {
 			i = begin;
-			return nullptr;
+			return SourceNodeResult<has_style>();
 		}
 	}
 };
@@ -236,21 +322,23 @@ public:
 template <class... T> class Choice;
 template <> class Choice<> {
 public:
-	template <class I> std::unique_ptr<SourceNode> match(I& i, const I& end) const {
-		return nullptr;
+	static constexpr bool has_style = false;
+	template <class I> SourceNodeResult<has_style> match(I& i, const I& end) const {
+		return SourceNodeResult<has_style>();
 	}
 };
 template <class T0, class... T> class Choice<T0, T...> {
 	T0 t0;
 	Choice<T...> choice;
 public:
+	static constexpr bool has_style = T0::has_style || Choice<T...>::has_style;
 	constexpr Choice(T0 t0, T... t): t0(t0), choice(t...) {}
-	template <class I> std::unique_ptr<SourceNode> match(I& i, const I& end) const {
+	template <class I> SourceNodeResult<has_style> match(I& i, const I& end) const {
 		if (auto source_node = t0.match(i, end)) {
-			return source_node;
+			return SourceNodeBuilder<has_style>::convert(std::move(source_node));
 		}
 		else {
-			return choice.match(i, end);
+			return SourceNodeBuilder<has_style>::convert(choice.match(i, end));
 		}
 	}
 };
@@ -259,26 +347,28 @@ template <class... T> Choice(T...) -> Choice<T...>;
 template <class T> class Repetition {
 	T t;
 public:
+	static constexpr bool has_style = T::has_style;
 	constexpr Repetition(T t): t(t) {}
-	template <class I> std::unique_ptr<SourceNode> match(I& i, const I& end) const {
-		std::vector<std::unique_ptr<SourceNode>> source_children;
+	template <class I> SourceNodeResult<has_style> match(I& i, const I& end) const {
+		SourceNodeBuilder<has_style> builder;
 		while (auto source_node = t.match(i, end)) {
-			source_children.emplace_back(std::move(source_node));
+			builder.add_child(std::move(source_node));
 		}
-		return std::make_unique<SourceNode>(std::move(source_children));
+		return builder.get_result();
 	}
 };
 
 template <class T> class Optional {
 	T t;
 public:
+	static constexpr bool has_style = T::has_style;
 	constexpr Optional(T t): t(t) {}
-	template <class I> std::unique_ptr<SourceNode> match(I& i, const I& end) const {
+	template <class I> SourceNodeResult<has_style> match(I& i, const I& end) const {
 		if (auto source_node = t.match(i, end)) {
 			return source_node;
 		}
 		else {
-			return std::make_unique<SourceNode>(0);
+			return SourceNodeResult<has_style>(0);
 		}
 	}
 };
@@ -286,15 +376,16 @@ public:
 template <class T> class Not {
 	T t;
 public:
+	static constexpr bool has_style = T::has_style;
 	constexpr Not(T t): t(t) {}
-	template <class I> std::unique_ptr<SourceNode> match(I& i, const I& end) const {
+	template <class I> SourceNodeResult<has_style> match(I& i, const I& end) const {
 		const I begin = i;
 		if (t.match(i, end)) {
 			i = begin;
-			return nullptr;
+			return SourceNodeResult<has_style>();
 		}
 		else {
-			return std::make_unique<SourceNode>(0);
+			return SourceNodeResult<has_style>(0);
 		}
 	}
 };
@@ -303,13 +394,14 @@ template <class T> class Highlight {
 	T t;
 	int style;
 public:
+	static constexpr bool has_style = true;
 	constexpr Highlight(T t, int style): t(t), style(style) {}
-	template <class I> std::unique_ptr<SourceNode> match(I& i, const I& end) const {
+	template <class I> SourceNodeResult<has_style> match(I& i, const I& end) const {
 		if (auto source_node = t.match(i, end)) {
-			return std::make_unique<SourceNode>(std::move(source_node), style);
+			return SourceNodeResult<has_style>(source_node.get_source_node(), style);
 		}
 		else {
-			return nullptr;
+			return SourceNodeResult<has_style>();
 		}
 	}
 };
@@ -500,7 +592,7 @@ public:
 		}
 		if (source_node == nullptr) {
 			auto i = buffer.begin();
-			source_node = syntax.match(i, buffer.end());
+			source_node = syntax.match(i, buffer.end()).get_source_node();
 		}
 		std::vector<Span> spans;
 		get_spans(index0, index1, spans, source_node);
@@ -521,7 +613,7 @@ public:
 		}
 		if (source_node == nullptr) {
 			auto i = buffer.begin();
-			source_node = syntax.match(i, buffer.end());
+			source_node = syntax.match(i, buffer.end()).get_source_node();
 		}
 		if (!get_word(index, word_start, word_end, source_node)) {
 			word_start = word_end = index;
@@ -534,7 +626,7 @@ public:
 		}
 		if (source_node == nullptr) {
 			auto i = buffer.begin();
-			source_node = syntax.match(i, buffer.end());
+			source_node = syntax.match(i, buffer.end()).get_source_node();
 		}
 		if (!get_next_word(index, word_start, word_end, source_node)) {
 			word_start = word_end = buffer.get_size() - 1;
@@ -547,7 +639,7 @@ public:
 		}
 		if (source_node == nullptr) {
 			auto i = buffer.begin();
-			source_node = syntax.match(i, buffer.end());
+			source_node = syntax.match(i, buffer.end()).get_source_node();
 		}
 		if (!get_previous_word(index, word_start, word_end, source_node)) {
 			word_start = word_end = 0;
@@ -556,7 +648,7 @@ public:
 };
 
 template <class T> bool match_string(const T& t, const char* string) {
-	return t.match(string, string + std::char_traits<char>::length(string)) != nullptr;
+	return t.match(string, string + std::char_traits<char>::length(string));
 }
 
 template <class T> constexpr auto ends_with(T t) {

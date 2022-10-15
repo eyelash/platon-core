@@ -4,6 +4,7 @@
 #include <utility>
 #include <type_traits>
 #include <new>
+#include <iterator>
 #include <cassert>
 
 template <class T, std::size_t N> class StaticVector {
