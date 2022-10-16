@@ -7,6 +7,26 @@ template <class... T> constexpr auto java_keywords(T... arguments) {
 	return choice(java_keyword(arguments)...);
 }
 
+constexpr auto java_string = choice(
+	sequence(
+		"\"\"\"",
+		zero_or_more(' '),
+		'\n',
+		repetition(choice(c_escape, but("\"\"\""))),
+		optional("\"\"\"")
+	),
+	sequence(
+		'"',
+		repetition(choice(c_escape, but(choice('"', '\n')))),
+		optional('"')
+	)
+);
+constexpr auto java_character = sequence(
+	'\'',
+	repetition(choice(c_escape, choice('\'', '\n'))),
+	optional('\'')
+);
+
 constexpr auto java_digits = sequence(
 	range('0', '9'),
 	repetition(sequence(zero_or_more('_'), range('0', '9')))
@@ -63,6 +83,9 @@ constexpr auto java_number = sequence(
 constexpr auto java_syntax = repetition(choice(
 	// comments
 	highlight(Style::COMMENT, c_comment),
+	// strings and characters
+	highlight(Style::LITERAL, java_string),
+	highlight(Style::LITERAL, java_character),
 	// numbers
 	highlight(Style::LITERAL, java_number),
 	// literals
@@ -72,7 +95,7 @@ constexpr auto java_syntax = repetition(choice(
 		"true"
 	)),
 	// keywords
-	highlight(Style::KEYWORD, java_keywords(
+	highlight(Style::WORD, highlight(Style::KEYWORD, java_keywords(
 		"this",
 		"var",
 		"if",
@@ -92,6 +115,7 @@ constexpr auto java_syntax = repetition(choice(
 		"return",
 		"new",
 		"class",
+		"record",
 		"interface",
 		"enum",
 		"extends",
@@ -105,9 +129,9 @@ constexpr auto java_syntax = repetition(choice(
 		"throws",
 		"import",
 		"package"
-	)),
+	))),
 	// types
-	highlight(Style::TYPE, java_keywords(
+	highlight(Style::WORD, highlight(Style::TYPE, java_keywords(
 		"void",
 		"boolean",
 		"char",
@@ -116,9 +140,8 @@ constexpr auto java_syntax = repetition(choice(
 		"int",
 		"long",
 		"float",
-		"double",
-		"String"
-	)),
+		"double"
+	))),
 	// identifiers
 	highlight(Style::WORD, sequence(java_identifier_begin_char, zero_or_more(java_identifier_char))),
 	any_char()
