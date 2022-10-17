@@ -1,28 +1,26 @@
 class CplusplusRawStringDelimiterStart {
 	std::string& delimiter;
 public:
-	static constexpr bool has_style = false;
 	CplusplusRawStringDelimiterStart(std::string& delimiter): delimiter(delimiter) {}
 	static constexpr bool is_delimiter_char(char c) {
 		return c >= 0x21 && c <= 0x7E && c != '(' && c != '\\';
 	}
-	template <class I> SourceNodeResult<has_style> match(I& i, const I& end) const {
+	template <class C> bool match(C& c) const {
 		return repetition(Char([this](char c) {
 			if (is_delimiter_char(c)) {
 				delimiter.push_back(c);
 				return true;
 			}
 			return false;
-		})).match(i, end);
+		})).match(c);
 	}
 };
 class CplusplusRawStringDelimiterEnd {
 	std::string& delimiter;
 public:
-	static constexpr bool has_style = false;
 	CplusplusRawStringDelimiterEnd(std::string& delimiter): delimiter(delimiter) {}
-	template <class I> SourceNodeResult<has_style> match(I& i, const I& end) const {
-		return String(delimiter.c_str()).match(i, end);
+	template <class C> bool match(C& c) const {
+		return String(delimiter.c_str()).match(c);
 	}
 };
 inline CplusplusRawStringDelimiterStart cplusplus_raw_string_delimiter_start(std::string& delimiter) {
@@ -31,9 +29,8 @@ inline CplusplusRawStringDelimiterStart cplusplus_raw_string_delimiter_start(std
 
 class CplusplusRawString {
 public:
-	static constexpr bool has_style = false;
 	constexpr CplusplusRawString() {}
-	template <class I> SourceNodeResult<has_style> match(I& i, const I& end) const {
+	template <class C> bool match(C& c) const {
 		std::string delimiter;
 		return sequence(
 			optional(choice('L', "u8", 'u', 'U')),
@@ -42,7 +39,7 @@ public:
 			'(',
 			repetition(but(sequence(')', CplusplusRawStringDelimiterEnd(delimiter), '\"'))),
 			optional(sequence(')', CplusplusRawStringDelimiterEnd(delimiter), '\"'))
-		).match(i, end);
+		).match(c);
 	}
 };
 constexpr CplusplusRawString cplusplus_raw_string() {

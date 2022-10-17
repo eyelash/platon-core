@@ -2,9 +2,8 @@ constexpr auto haskell_identifier_char = choice(range('a', 'z'), '_', range('A',
 
 class HaskellBlockComment {
 public:
-	static constexpr bool has_style = false;
 	constexpr HaskellBlockComment() {}
-	template <class I> SourceNodeResult<has_style> match(I& i, const I& end) const {
+	template <class C> bool match(C& c) const {
 		return sequence(
 			"{-",
 			repetition(choice(
@@ -12,7 +11,7 @@ public:
 				but("-}")
 			)),
 			optional("-}")
-		).match(i, end);
+		).match(c);
 	}
 };
 constexpr HaskellBlockComment haskell_block_comment() {

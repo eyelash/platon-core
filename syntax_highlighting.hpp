@@ -121,123 +121,85 @@ public:
 	constexpr Span(std::size_t first, std::size_t last, int style): first(first), last(last), style(style) {}
 };
 
-class SourceNode {
-	std::size_t length;
-	std::vector<std::unique_ptr<SourceNode>> children;
-	int style;
+class StringParseContext {
+	const char* s;
 public:
-	SourceNode(std::size_t length): length(length), style(0) {}
-	SourceNode(std::vector<std::unique_ptr<SourceNode>>&& children): length(0), children(std::move(children)), style(0) {
-		for (const auto& child: this->children) {
-			length += child->get_length();
-		}
+	StringParseContext(const char* s): s(s) {}
+	using SavePoint = const char*;
+	operator bool() const {
+		return *s != '\0';
 	}
-	SourceNode(std::unique_ptr<SourceNode>&& child, int style): length(child->get_length()), style(style) {
-		children.emplace_back(std::move(child));
+	char operator *() const {
+		return *s;
 	}
-	std::size_t get_length() const {
-		return length;
+	StringParseContext& operator ++() {
+		++s;
+		return *this;
 	}
-	const std::vector<std::unique_ptr<SourceNode>>& get_children() const {
-		return children;
+	SavePoint save() const {
+		return s;
 	}
-	int get_style() const {
-		return style;
+	SavePoint save_with_style() {
+		return s;
+	}
+	void set_style(SavePoint save_point, int style) {}
+	void restore(SavePoint save_point) {
+		s = save_point;
 	}
 };
 
-template <bool has_style> class SourceNodeResult {
-	std::unique_ptr<SourceNode> source_node;
+template <class I> class HighlightParseContext {
+	I i;
+	I end;
+	std::size_t pos;
+	std::vector<Span> spans;
 public:
-	SourceNodeResult(): source_node() {}
-	//SourceNodeResult(std::vector<std::unique_ptr<SourceNode>>&& children): source_node(std::make_unique<SourceNode>(std::move(children))) {}
-	//SourceNodeResult(std::unique_ptr<SourceNode>&& child, int style): source_node(std::make_unique<SourceNode>(std::move(child), style)) {}
-	template <class... A> SourceNodeResult(A&&... arguments): source_node(std::make_unique<SourceNode>(std::forward<A>(arguments)...)) {}
+	HighlightParseContext(I i, I end): i(i), end(end), pos(0) {}
+	using SavePoint = std::tuple<I, std::size_t, std::size_t>;
 	operator bool() const {
-		return static_cast<bool>(source_node);
+		return i != end;
 	}
-	std::size_t get_length() const {
-		return source_node->get_length();
+	char operator *() const {
+		return *i;
 	}
-	std::unique_ptr<SourceNode> get_source_node() {
-		return std::move(source_node);
+	HighlightParseContext& operator ++() {
+		++i;
+		++pos;
+		return *this;
 	}
-};
-template <> class SourceNodeResult<false> {
-	std::size_t length;
-	bool match;
-public:
-	constexpr SourceNodeResult(): length(0), match(false) {}
-	constexpr SourceNodeResult(std::size_t length): length(length), match(true) {}
-	operator bool() const {
-		return match;
+	SavePoint save() const {
+		return std::make_tuple(i, pos, spans.size());
 	}
-	std::size_t get_length() const {
-		return length;
+	SavePoint save_with_style() {
+		const std::size_t index = spans.size();
+		spans.emplace_back(pos, pos, 0);
+		return std::make_tuple(i, pos, index);
 	}
-	std::unique_ptr<SourceNode> get_source_node() {
-		return std::make_unique<SourceNode>(length);
+	void set_style(const SavePoint& save_point, int style) {
+		Span& span = spans[std::get<2>(save_point)];
+		span.last = pos;
+		span.style = style;
 	}
-};
-
-template <bool has_style> class SourceNodeBuilder {
-	std::size_t length = 0;
-	std::vector<std::unique_ptr<SourceNode>> children;
-public:
-	void add_child(SourceNodeResult<true> child) {
-		const std::size_t child_length = child.get_length();
-		if (child_length > 0) {
-			length += child_length;
-			children.push_back(child.get_source_node());
-		}
+	void restore(const SavePoint& save_point) {
+		i = std::get<0>(save_point);
+		pos = std::get<1>(save_point);
+		spans.erase(spans.begin() + std::get<2>(save_point), spans.end());
 	}
-	void add_child(SourceNodeResult<false> child) {
-		const std::size_t child_length = child.get_length();
-		if (child_length > 0) {
-			length += child_length;
-			children.push_back(std::make_unique<SourceNode>(child_length));
-		}
-	}
-	SourceNodeResult<true> get_result() {
-		return SourceNodeResult<true>(std::move(children));
-	}
-	static SourceNodeResult<true> convert(SourceNodeResult<true> result) {
-		return result;
-	}
-	static SourceNodeResult<true> convert(SourceNodeResult<false> result) {
-		if (result) {
-			return SourceNodeResult<true>(result.get_length());
-		}
-		else {
-			return SourceNodeResult<true>();
-		}
-	}
-};
-template <> class SourceNodeBuilder<false> {
-	std::size_t length = 0;
-public:
-	void add_child(SourceNodeResult<false> child) {
-		length += child.get_length();
-	}
-	SourceNodeResult<false> get_result() {
-		return SourceNodeResult<false>(length);
-	}
-	static SourceNodeResult<false> convert(SourceNodeResult<false> result) {
-		return result;
+	const std::vector<Span>& get_spans() const {
+		return spans;
 	}
 };
 
 template <class F> class Char {
 	F f;
 public:
-	static constexpr bool has_style = false;
 	constexpr Char(F f): f(f) {}
-	template <class I> SourceNodeResult<has_style> match(I& i, const I& end) const {
-		if (i != end && f(*i)) {
-			++i;
-			return SourceNodeResult<has_style>(1);
+	template <class C> bool match(C& c) const {
+		if (c && f(*c)) {
+			++c;
+			return true;
 		}
-		return SourceNodeResult<has_style>();
+		return false;
 	}
 };
 
@@ -245,20 +207,19 @@ class String {
 	const char* string;
 	std::size_t length;
 public:
-	static constexpr bool has_style = false;
 	constexpr String(const char* string): string(string), length(std::char_traits<char>::length(string)) {}
-	template <class I> SourceNodeResult<has_style> match(I& i, const I& end) const {
-		const I begin = i;
+	template <class C> bool match(C& c) const {
+		auto save_point = c.save();
 		for (const char* s = string; *s != '\0'; ++s) {
-			if (i != end && *i == *s) {
-				++i;
+			if (c && *c == *s) {
+				++c;
 			}
 			else {
-				i = begin;
-				return SourceNodeResult<has_style>();
+				c.restore(save_point);
+				return false;
 			}
 		}
-		return SourceNodeResult<has_style>(length);
+		return true;
 	}
 };
 
@@ -277,9 +238,8 @@ public:
 template <class... T> class PartialSequence;
 template <> class PartialSequence<> {
 public:
-	static constexpr bool partial_has_style = false;
 	constexpr PartialSequence() {}
-	template <class I, bool has_style> bool match(I& i, const I& end, SourceNodeBuilder<has_style>& builder) const {
+	template <class C> bool match(C& c) const {
 		return true;
 	}
 };
@@ -287,14 +247,10 @@ template <class T0, class... T> class PartialSequence<T0, T...> {
 	T0 t0;
 	PartialSequence<T...> sequence;
 public:
-	static constexpr bool partial_has_style = T0::has_style || PartialSequence<T...>::partial_has_style;
 	constexpr PartialSequence(T0 t0, T... t): t0(t0), sequence(t...) {}
-	template <class I, bool has_style> bool match(I& i, const I& end, SourceNodeBuilder<has_style>& builder) const {
-		if (auto source_node = t0.match(i, end)) {
-			if (source_node.get_length() > 0) {
-				builder.add_child(std::move(source_node));
-			}
-			return sequence.match(i, end, builder);
+	template <class C> bool match(C& c) const {
+		if (t0.match(c)) {
+			return sequence.match(c);
 		}
 		else {
 			return false;
@@ -304,17 +260,15 @@ public:
 template <class... T> class Sequence {
 	PartialSequence<T...> sequence;
 public:
-	static constexpr bool has_style = PartialSequence<T...>::partial_has_style;
 	constexpr Sequence(T... t): sequence(t...) {}
-	template <class I> SourceNodeResult<has_style> match(I& i, const I& end) const {
-		const I begin = i;
-		SourceNodeBuilder<has_style> builder;
-		if (sequence.match(i, end, builder)) {
-			return builder.get_result();
+	template <class C> bool match(C& c) const {
+		auto save_point = c.save();
+		if (sequence.match(c)) {
+			return true;
 		}
 		else {
-			i = begin;
-			return SourceNodeResult<has_style>();
+			c.restore(save_point);
+			return false;
 		}
 	}
 };
@@ -322,23 +276,21 @@ public:
 template <class... T> class Choice;
 template <> class Choice<> {
 public:
-	static constexpr bool has_style = false;
-	template <class I> SourceNodeResult<has_style> match(I& i, const I& end) const {
-		return SourceNodeResult<has_style>();
+	template <class C> bool match(C& c) const {
+		return false;
 	}
 };
 template <class T0, class... T> class Choice<T0, T...> {
 	T0 t0;
 	Choice<T...> choice;
 public:
-	static constexpr bool has_style = T0::has_style || Choice<T...>::has_style;
 	constexpr Choice(T0 t0, T... t): t0(t0), choice(t...) {}
-	template <class I> SourceNodeResult<has_style> match(I& i, const I& end) const {
-		if (auto source_node = t0.match(i, end)) {
-			return SourceNodeBuilder<has_style>::convert(std::move(source_node));
+	template <class C> bool match(C& c) const {
+		if (t0.match(c)) {
+			return true;
 		}
 		else {
-			return SourceNodeBuilder<has_style>::convert(choice.match(i, end));
+			return choice.match(c);
 		}
 	}
 };
@@ -347,28 +299,23 @@ template <class... T> Choice(T...) -> Choice<T...>;
 template <class T> class Repetition {
 	T t;
 public:
-	static constexpr bool has_style = T::has_style;
 	constexpr Repetition(T t): t(t) {}
-	template <class I> SourceNodeResult<has_style> match(I& i, const I& end) const {
-		SourceNodeBuilder<has_style> builder;
-		while (auto source_node = t.match(i, end)) {
-			builder.add_child(std::move(source_node));
-		}
-		return builder.get_result();
+	template <class C> bool match(C& c) const {
+		while (t.match(c)) {}
+		return true;
 	}
 };
 
 template <class T> class Optional {
 	T t;
 public:
-	static constexpr bool has_style = T::has_style;
 	constexpr Optional(T t): t(t) {}
-	template <class I> SourceNodeResult<has_style> match(I& i, const I& end) const {
-		if (auto source_node = t.match(i, end)) {
-			return source_node;
+	template <class C> bool match(C& c) const {
+		if (t.match(c)) {
+			return true;
 		}
 		else {
-			return SourceNodeResult<has_style>(0);
+			return true;
 		}
 	}
 };
@@ -376,16 +323,15 @@ public:
 template <class T> class Not {
 	T t;
 public:
-	static constexpr bool has_style = T::has_style;
 	constexpr Not(T t): t(t) {}
-	template <class I> SourceNodeResult<has_style> match(I& i, const I& end) const {
-		const I begin = i;
-		if (t.match(i, end)) {
-			i = begin;
-			return SourceNodeResult<has_style>();
+	template <class C> bool match(C& c) const {
+		auto save_point = c.save();
+		if (t.match(c)) {
+			c.restore(save_point);
+			return false;
 		}
 		else {
-			return SourceNodeResult<has_style>(0);
+			return true;
 		}
 	}
 };
@@ -394,14 +340,16 @@ template <class T> class Highlight {
 	T t;
 	int style;
 public:
-	static constexpr bool has_style = true;
 	constexpr Highlight(T t, int style): t(t), style(style) {}
-	template <class I> SourceNodeResult<has_style> match(I& i, const I& end) const {
-		if (auto source_node = t.match(i, end)) {
-			return SourceNodeResult<has_style>(source_node.get_source_node(), style);
+	template <class C> bool match(C& c) const {
+		auto save_point = c.save_with_style();
+		if (t.match(c)) {
+			c.set_style(save_point, style);
+			return true;
 		}
 		else {
-			return SourceNodeResult<has_style>();
+			c.restore(save_point);
+			return false;
 		}
 	}
 };
@@ -511,78 +459,69 @@ template <class T> Reverse<T> reverse(T& t) {
 
 template <class E, class T> class LanguageImplementation: public LanguageInterface<E> {
 	T syntax;
-	std::unique_ptr<SourceNode> source_node;
+	std::vector<Span> highlights;
+	std::vector<Span> words;
+	static void change_style(std::vector<Span>& spans, std::size_t pos, int style, int previous_style) {
+		if (style == previous_style) {
+			return;
+		}
+		// TODO: handle empty spans
+		if (previous_style != Style::DEFAULT) {
+			spans.back().last = pos;
+		}
+		if (style != Style::DEFAULT) {
+			spans.emplace_back(pos, 0, style);
+		}
+	}
+	static void flatten_highlights(const std::vector<Span>& spans, std::size_t& i, std::vector<Span>& result, int outer_style = Style::DEFAULT) {
+		const Span& span = spans[i];
+		++i;
+		const int style = span.style >= Style::DEFAULT ? span.style : outer_style;
+		change_style(result, span.first, style, outer_style);
+		while (i < spans.size() && spans[i].last <= span.last) {
+			flatten_highlights(spans, i, result, style);
+		}
+		change_style(result, span.last, outer_style, style);
+	}
+	static std::vector<Span> flatten_highlights(const std::vector<Span>& spans) {
+		std::vector<Span> result;
+		std::size_t i = 0;
+		while (i < spans.size()) {
+			flatten_highlights(spans, i, result);
+		}
+		return result;
+	}
+	static void flatten_words(const std::vector<Span>& spans, std::size_t& i, std::vector<Span>& result, int outer_style = Style::DEFAULT) {
+		const Span& span = spans[i];
+		++i;
+		const int style = span.style == Style::WORD ? span.style : outer_style;
+		change_style(result, span.first, style, outer_style);
+		while (i < spans.size() && spans[i].last <= span.last) {
+			flatten_words(spans, i, result, style);
+		}
+		change_style(result, span.last, outer_style, style);
+	}
+	static std::vector<Span> flatten_words(const std::vector<Span>& spans) {
+		std::vector<Span> result;
+		std::size_t i = 0;
+		while (i < spans.size()) {
+			flatten_words(spans, i, result);
+		}
+		return result;
+	}
+	void parse_if_necessary(const E& buffer) {
+		if (highlights.empty() && words.empty()) {
+			HighlightParseContext context(buffer.begin(), buffer.end());
+			syntax.match(context);
+			highlights = flatten_highlights(context.get_spans());
+			words = flatten_words(context.get_spans());
+		}
+	}
 public:
 	LanguageImplementation(T syntax): syntax(syntax) {}
 	void invalidate(std::size_t index) override {
-		source_node = nullptr;
-	}
-	static void get_spans(std::size_t index0, std::size_t index1, std::vector<Span>& spans, const std::unique_ptr<SourceNode>& node, std::size_t index = 0, int outer_style = Style::DEFAULT) {
-		if (index > index1) return;
-		std::size_t end_index = index + node->get_length();
-		if (end_index < index0) return;
-		const int style = node->get_style() >= Style::DEFAULT ? node->get_style() : outer_style;
-		if (node->get_children().empty()) {
-			index = std::max(index, index0) - index0;
-			end_index = std::min(end_index, index1) - index0;
-			if (index != end_index && style != Style::DEFAULT) {
-				if (!spans.empty() && spans.back().last == index && spans.back().style == style) {
-					spans.back().last = end_index;
-				}
-				else {
-					spans.emplace_back(index, end_index, style);
-				}
-			}
-		}
-		else {
-			for (const auto& child: node->get_children()) {
-				get_spans(index0, index1, spans, child, index, style);
-				index += child->get_length();
-			}
-		}
-	}
-	static bool get_word(std::size_t index, std::size_t& word_start, std::size_t& word_end, const std::unique_ptr<SourceNode>& node, std::size_t start_index = 0) {
-		if (start_index > index) return false;
-		std::size_t end_index = start_index + node->get_length();
-		if (end_index < index) return false;
-		if (node->get_style() == Style::WORD) {
-			word_start = start_index;
-			word_end = end_index;
-			return true;
-		}
-		for (const auto& child: node->get_children()) {
-			if (get_word(index, word_start, word_end, child, start_index)) return true;
-			start_index += child->get_length();
-		}
-		return false;
-	}
-	static bool get_next_word(std::size_t index, std::size_t& word_start, std::size_t& word_end, const std::unique_ptr<SourceNode>& node, std::size_t start_index = 0) {
-		std::size_t end_index = start_index + node->get_length();
-		if (end_index <= index) return false;
-		if (node->get_style() == Style::WORD) {
-			word_start = start_index;
-			word_end = end_index;
-			return true;
-		}
-		for (const auto& child: node->get_children()) {
-			if (get_next_word(index, word_start, word_end, child, start_index)) return true;
-			start_index += child->get_length();
-		}
-		return false;
-	}
-	static bool get_previous_word(std::size_t index, std::size_t& word_start, std::size_t& word_end, const std::unique_ptr<SourceNode>& node, std::size_t start_index = 0) {
-		if (start_index >= index) return false;
-		std::size_t end_index = start_index + node->get_length();
-		if (node->get_style() == Style::WORD) {
-			word_start = start_index;
-			word_end = end_index;
-			return true;
-		}
-		for (const auto& child: reverse(node->get_children())) {
-			end_index -= child->get_length();
-			if (get_previous_word(index, word_start, word_end, child, end_index)) return true;
-		}
-		return false;
+		highlights.clear();
+		words.clear();
 	}
 	void highlight(const E& buffer, JSONWriter& writer, std::size_t index0, std::size_t index1) override {
 		if (buffer.get_size() > 10000) {
@@ -590,18 +529,16 @@ public:
 			writer.write_array([](JSONArrayWriter& writer) {});
 			return;
 		}
-		if (source_node == nullptr) {
-			auto i = buffer.begin();
-			source_node = syntax.match(i, buffer.end()).get_source_node();
-		}
-		std::vector<Span> spans;
-		get_spans(index0, index1, spans, source_node);
+		parse_if_necessary(buffer);
+		auto i = std::upper_bound(highlights.begin(), highlights.end(), index0, [](std::size_t index0, const Span& span) {
+			return index0 < span.last;
+		});
 		writer.write_array([&](JSONArrayWriter& writer) {
-			for (const auto& span: spans) {
+			for (; i != highlights.end() && i->first < index1; ++i) {
 				writer.write_element().write_array([&](JSONArrayWriter& writer) {
-					writer.write_element().write_number(span.first);
-					writer.write_element().write_number(span.last);
-					writer.write_element().write_number(span.style - Style::DEFAULT);
+					writer.write_element().write_number(std::max(i->first, index0) - index0);
+					writer.write_element().write_number(std::min(i->last, index1) - index0);
+					writer.write_element().write_number(i->style - Style::DEFAULT);
 				});
 			}
 		});
@@ -611,11 +548,15 @@ public:
 			word_start = word_end = index;
 			return;
 		}
-		if (source_node == nullptr) {
-			auto i = buffer.begin();
-			source_node = syntax.match(i, buffer.end()).get_source_node();
+		parse_if_necessary(buffer);
+		auto i = std::lower_bound(words.begin(), words.end(), index, [](const Span& span, std::size_t index) {
+			return span.last < index;
+		});
+		if (i != words.end() && i->first <= index) {
+			word_start = i->first;
+			word_end = i->last;
 		}
-		if (!get_word(index, word_start, word_end, source_node)) {
+		else {
 			word_start = word_end = index;
 		}
 	}
@@ -624,11 +565,15 @@ public:
 			word_start = word_end = index;
 			return;
 		}
-		if (source_node == nullptr) {
-			auto i = buffer.begin();
-			source_node = syntax.match(i, buffer.end()).get_source_node();
+		parse_if_necessary(buffer);
+		auto i = std::upper_bound(words.begin(), words.end(), index, [](std::size_t index, const Span& span) {
+			return index < span.last;
+		});
+		if (i != words.end()) {
+			word_start = i->first;
+			word_end = i->last;
 		}
-		if (!get_next_word(index, word_start, word_end, source_node)) {
+		else {
 			word_start = word_end = buffer.get_size() - 1;
 		}
 	}
@@ -637,18 +582,23 @@ public:
 			word_start = word_end = index;
 			return;
 		}
-		if (source_node == nullptr) {
-			auto i = buffer.begin();
-			source_node = syntax.match(i, buffer.end()).get_source_node();
+		parse_if_necessary(buffer);
+		auto i = std::upper_bound(words.rbegin(), words.rend(), index, [](std::size_t index, const Span& span) {
+			return index > span.first;
+		});
+		if (i != words.rend()) {
+			word_start = i->first;
+			word_end = i->last;
 		}
-		if (!get_previous_word(index, word_start, word_end, source_node)) {
+		else {
 			word_start = word_end = 0;
 		}
 	}
 };
 
 template <class T> bool match_string(const T& t, const char* string) {
-	return t.match(string, string + std::char_traits<char>::length(string));
+	StringParseContext context(string);
+	return t.match(context);
 }
 
 template <class T> constexpr auto ends_with(T t) {
