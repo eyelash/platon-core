@@ -46,7 +46,9 @@ class TextBuffer {
 	};
 	Tree<Info> tree;
 public:
-	TextBuffer() {}
+	TextBuffer() {
+		tree.insert(tree_end(), '\n');
+	}
 	TextBuffer(const char* path) {
 		std::ifstream file(path);
 		tree.append(std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>());
