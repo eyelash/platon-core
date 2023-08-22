@@ -42,9 +42,10 @@ constexpr auto c_number = sequence(
 		sequence(
 			'0',
 			choice('x', 'X'),
-			optional(c_hex_digits),
-			optional('.'),
-			optional(c_hex_digits),
+			choice(
+				sequence(c_hex_digits, optional('.'), optional(c_hex_digits)),
+				sequence('.', c_hex_digits)
+			),
 			// exponent
 			optional(sequence(
 				choice('p', 'P'),
