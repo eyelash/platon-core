@@ -397,6 +397,7 @@ constexpr auto hex_digit = choice(range('0', '9'), range('a', 'f'), range('A', '
 #include "languages/xml.hpp"
 #include "languages/javascript.hpp"
 #include "languages/python.hpp"
+#include "languages/rust.hpp"
 #include "languages/haskell.hpp"
 
 template <class E> class LanguageInterface {
@@ -608,6 +609,9 @@ template <class E> std::unique_ptr<LanguageInterface<E>> get_language(const E& b
 	}
 	if (match_string(ends_with(".py"), file_name)) {
 		return std::make_unique<LanguageImplementation<E, decltype(python_syntax)>>(python_syntax);
+	}
+	if (match_string(ends_with(".rs"), file_name)) {
+		return std::make_unique<LanguageImplementation<E, decltype(rust_syntax)>>(rust_syntax);
 	}
 	if (match_string(ends_with(".hs"), file_name)) {
 		return std::make_unique<LanguageImplementation<E, decltype(haskell_syntax)>>(haskell_syntax);
