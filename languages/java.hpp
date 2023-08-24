@@ -23,7 +23,7 @@ constexpr auto java_string = choice(
 );
 constexpr auto java_character = sequence(
 	'\'',
-	repetition(choice(c_escape, choice('\'', '\n'))),
+	repetition(choice(c_escape, but(choice('\'', '\n')))),
 	optional('\'')
 );
 
@@ -46,9 +46,10 @@ constexpr auto java_number = sequence(
 		sequence(
 			'0',
 			choice('x', 'X'),
-			optional(java_hex_digits),
-			optional('.'),
-			optional(java_hex_digits),
+			choice(
+				sequence(java_hex_digits, optional('.'), optional(java_hex_digits)),
+				sequence('.', java_hex_digits)
+			),
 			// exponent
 			optional(sequence(
 				choice('p', 'P'),
@@ -89,11 +90,11 @@ constexpr auto java_syntax = repetition(choice(
 	// numbers
 	highlight(Style::LITERAL, java_number),
 	// literals
-	highlight(Style::LITERAL, java_keywords(
+	highlight(Style::WORD, highlight(Style::LITERAL, java_keywords(
 		"null",
 		"false",
 		"true"
-	)),
+	))),
 	// keywords
 	highlight(Style::WORD, highlight(Style::KEYWORD, java_keywords(
 		"this",
