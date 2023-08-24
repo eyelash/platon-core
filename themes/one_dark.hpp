@@ -5,8 +5,8 @@ constexpr Theme one_dark_theme = {
 	Color::hsl(220, 100, 66), // cursor
 	Color::hsl(220, 13, 18), // number_background
 	Color::hsl(220, 13, 18), // number_background_active
-	Style(Color::hsl(220, 14, 71 - 26)), // number
-	Style(Color::hsl(220, 14, 71)), // number_active
+	Style(Color::hsl(220, 13, 18) + Color::hsl(220, 14, 71 - 26).with_alpha(0.6f)), // number
+	Style(Color::hsl(220, 13, 18) + Color::hsl(220, 14, 71).with_alpha(0.6f)), // number_active
 	{
 		Style(Color::hsl(220, 14, 71)), // text
 		Style(Color::hsl(220, 10, 40), Weight::NORMAL, true), // comments

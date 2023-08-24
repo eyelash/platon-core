@@ -5,8 +5,8 @@ constexpr Theme monokai_theme = {
 	Color::hsl(60, 36, 96).with_alpha(0.9f), // cursor
 	Color::hsl(70, 8, 15), // number_background
 	Color::hsl(55, 11, 22), // number_background_active
-	Style(Color::hsl(60, 30, 96).with_alpha(0.5f)), // number
-	Style(Color::hsl(60, 30, 96).with_alpha(0.8f)), // number_active
+	Style(Color::hsl(70, 8, 15) + Color::hsl(60, 30, 96).with_alpha(0.5f)), // number
+	Style(Color::hsl(70, 8, 15) + Color::hsl(60, 30, 96).with_alpha(0.85f)), // number_active
 	{
 		Style(Color::hsl(60, 30, 96)), // text
 		Style(Color::hsl(50, 11, 41)), // comments
