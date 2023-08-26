@@ -1,6 +1,7 @@
 #pragma once
 
 #ifdef _WIN32
+#include <Windows.h>
 #else
 #include <unistd.h>
 #include <fcntl.h>
@@ -12,6 +13,7 @@
 
 constexpr bool is_path_separator(char c) {
 	#ifdef _WIN32
+	return c == '\\' || c == '/';
 	#else
 	return c == '/';
 	#endif
@@ -58,6 +60,14 @@ class Time {
 public:
 	static double get_monotonic() {
 		#ifdef _WIN32
+		static const double frequency = []() {
+			LARGE_INTEGER frequency;
+			QueryPerformanceFrequency(&frequency);
+			return frequency.QuadPart;
+		}();
+		LARGE_INTEGER count;
+		QueryPerformanceCounter(&count);
+		return count.QuadPart / frequency;
 		#else
 		struct timespec ts;
 		clock_gettime(CLOCK_MONOTONIC, &ts);
