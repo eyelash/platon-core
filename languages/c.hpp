@@ -1,5 +1,6 @@
 constexpr auto c_identifier_begin_char = choice(range('a', 'z'), range('A', 'Z'), '_');
 constexpr auto c_identifier_char = choice(range('a', 'z'), range('A', 'Z'), '_', range('0', '9'));
+constexpr auto c_identifier = sequence(c_identifier_begin_char, zero_or_more(c_identifier_char));
 template <class T> constexpr auto c_keyword(T t) {
 	return sequence(t, not_(c_identifier_char));
 }
@@ -81,8 +82,8 @@ constexpr auto c_syntax = repetition(choice(
 	// comments
 	highlight(Style::COMMENT, c_comment),
 	// strings and characters
-	highlight(Style::WORD, highlight(Style::LITERAL, c_string)),
-	highlight(Style::WORD, highlight(Style::LITERAL, c_character)),
+	highlight(Style::WORD, highlight(Style::STRING, c_string)),
+	highlight(Style::WORD, highlight(Style::STRING, c_character)),
 	// numbers
 	highlight(Style::WORD, highlight(Style::LITERAL, c_number)),
 	// keywords
@@ -103,11 +104,33 @@ constexpr auto c_syntax = repetition(choice(
 		"enum",
 		"union",
 		"typedef",
-		"sizeof",
+		"const",
 		"static",
 		"extern",
 		"inline"
 	))),
+	// operators
+	highlight(Style::WORD, highlight(Style::OPERATOR, c_keyword(
+		"sizeof"
+	))),
+	highlight(Style::WORD, highlight(Style::OPERATOR, one_or_more(choice(
+		'+',
+		'-',
+		'*',
+		'/',
+		'%',
+		'=',
+		'!',
+		'<',
+		'>',
+		'&',
+		'|',
+		'^',
+		'~',
+		'?',
+		':',
+		'.'
+	)))),
 	// types
 	highlight(Style::WORD, highlight(Style::TYPE, c_keywords(
 		"void",
@@ -118,10 +141,9 @@ constexpr auto c_syntax = repetition(choice(
 		"float",
 		"double",
 		"unsigned",
-		"signed",
-		"const"
+		"signed"
 	))),
 	// identifiers
-	highlight(Style::WORD, sequence(c_identifier_begin_char, zero_or_more(c_identifier_char))),
+	highlight(Style::WORD, c_identifier),
 	any_char()
 ));

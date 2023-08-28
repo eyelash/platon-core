@@ -50,9 +50,9 @@ constexpr auto cplusplus_syntax = repetition(choice(
 	// comments
 	highlight(Style::COMMENT, c_comment),
 	// strings and characters
-	highlight(Style::WORD, highlight(Style::LITERAL, cplusplus_raw_string())),
-	highlight(Style::WORD, highlight(Style::LITERAL, c_string)),
-	highlight(Style::WORD, highlight(Style::LITERAL, c_character)),
+	highlight(Style::WORD, highlight(Style::STRING, cplusplus_raw_string())),
+	highlight(Style::WORD, highlight(Style::STRING, c_string)),
+	highlight(Style::WORD, highlight(Style::STRING, c_character)),
 	// numbers
 	highlight(Style::WORD, highlight(Style::LITERAL, c_number)),
 	// literals
@@ -82,8 +82,6 @@ constexpr auto cplusplus_syntax = repetition(choice(
 		"catch",
 		"throw",
 		"return",
-		"new",
-		"delete",
 		"class",
 		"struct",
 		"enum",
@@ -105,9 +103,21 @@ constexpr auto cplusplus_syntax = repetition(choice(
 		"namespace",
 		"using",
 		"typedef",
+		"const",
 		"module",
 		"import",
 		"export"
+	))),
+	// operators
+	highlight(Style::WORD, highlight(Style::OPERATOR, c_keywords(
+		"new",
+		"delete",
+		"sizeof",
+		"alignof",
+		"static_cast",
+		"reinterpret_cast",
+		"dynamic_cast",
+		"const_cast"
 	))),
 	// types
 	highlight(Style::WORD, highlight(Style::TYPE, c_keywords(
@@ -120,11 +130,9 @@ constexpr auto cplusplus_syntax = repetition(choice(
 		"float",
 		"double",
 		"unsigned",
-		"signed",
-		"const",
-		"volatile"
+		"signed"
 	))),
 	// identifiers
-	highlight(Style::WORD, sequence(c_identifier_begin_char, zero_or_more(c_identifier_char))),
+	highlight(Style::WORD, c_identifier),
 	any_char()
 ));

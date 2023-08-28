@@ -499,7 +499,7 @@ public:
 		static std::string json;
 		json.clear();
 		JSONWriter writer(json);
-		default_theme.write(writer);
+		one_dark_theme.write(writer);
 		return json.c_str();
 	}
 	const char* copy() const {

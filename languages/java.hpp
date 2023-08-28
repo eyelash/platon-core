@@ -1,5 +1,6 @@
 constexpr auto java_identifier_begin_char = choice(range('a', 'z'), range('A', 'Z'), '$', '_');
 constexpr auto java_identifier_char = choice(range('a', 'z'), range('A', 'Z'), '$', '_', range('0', '9'));
+constexpr auto java_identifier = sequence(java_identifier_begin_char, zero_or_more(java_identifier_char));
 template <class T> constexpr auto java_keyword(T t) {
 	return sequence(t, not_(java_identifier_char));
 }
@@ -85,8 +86,8 @@ constexpr auto java_syntax = repetition(choice(
 	// comments
 	highlight(Style::COMMENT, c_comment),
 	// strings and characters
-	highlight(Style::LITERAL, java_string),
-	highlight(Style::LITERAL, java_character),
+	highlight(Style::STRING, java_string),
+	highlight(Style::STRING, java_character),
 	// numbers
 	highlight(Style::LITERAL, java_number),
 	// literals
@@ -144,6 +145,6 @@ constexpr auto java_syntax = repetition(choice(
 		"double"
 	))),
 	// identifiers
-	highlight(Style::WORD, sequence(java_identifier_begin_char, zero_or_more(java_identifier_char))),
+	highlight(Style::WORD, java_identifier),
 	any_char()
 ));

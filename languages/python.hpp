@@ -25,9 +25,10 @@ constexpr auto python_syntax = repetition(choice(
 		"continue",
 		"return",
 		"def",
-		"class"
+		"class",
+		"import"
 	))),
 	// identifiers
-	highlight(Style::WORD, sequence(c_identifier_begin_char, zero_or_more(c_identifier_char))),
+	highlight(Style::WORD, c_identifier),
 	any_char()
 ));

@@ -79,6 +79,6 @@ constexpr auto javascript_syntax = repetition(choice(
 		"export"
 	)),
 	// identifiers
-	highlight(Style::WORD, sequence(java_identifier_begin_char, zero_or_more(java_identifier_char))),
+	highlight(Style::WORD, java_identifier),
 	any_char()
 ));

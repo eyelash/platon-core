@@ -45,8 +45,12 @@ constexpr auto rust_syntax = repetition(choice(
 		"struct",
 		"enum",
 		"trait",
+		"type",
 		"impl",
-		"where"
+		"where",
+		"pub",
+		"use",
+		"mod"
 	))),
 	// types
 	highlight(Style::WORD, highlight(Style::TYPE, c_keywords(
@@ -60,6 +64,6 @@ constexpr auto rust_syntax = repetition(choice(
 		"str"
 	))),
 	// identifiers
-	highlight(Style::WORD, sequence(c_identifier_begin_char, zero_or_more(c_identifier_char))),
+	highlight(Style::WORD, c_identifier),
 	any_char()
 ));

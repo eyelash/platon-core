@@ -77,8 +77,11 @@ public:
 	static constexpr int DEFAULT = 2;
 	static constexpr int COMMENT = 3;
 	static constexpr int KEYWORD = 4;
-	static constexpr int TYPE = 5;
-	static constexpr int LITERAL = 6;
+	static constexpr int OPERATOR = 5;
+	static constexpr int TYPE = 6;
+	static constexpr int LITERAL = 7;
+	static constexpr int STRING = 8;
+	static constexpr int FUNCTION = 9;
 };
 
 struct Theme {
@@ -90,7 +93,7 @@ struct Theme {
 	Color number_background_active;
 	Style number;
 	Style number_active;
-	Style styles[5];
+	Style styles[8];
 	void write(JSONWriter& writer) const {
 		writer.write_object([&](JSONObjectWriter& writer) {
 			background.write(writer.write_member("background"));
@@ -110,8 +113,8 @@ struct Theme {
 	}
 };
 
-#include "themes/default.hpp"
 #include "themes/one_dark.hpp"
+#include "themes/monokai.hpp"
 
 class Span {
 public:
