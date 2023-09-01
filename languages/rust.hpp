@@ -1,25 +1,18 @@
-class RustBlockComment {
-public:
-	constexpr RustBlockComment() {}
-	template <class C> bool match(C& c) const {
-		return sequence(
-			"/*",
-			repetition(choice(
-				*this,
-				but("*/")
-			)),
-			optional("*/")
-		).match(c);
-	}
-};
-constexpr RustBlockComment rust_block_comment() {
-	return RustBlockComment();
-}
+constexpr auto rust_block_comment = recursive([](auto rust_block_comment) {
+	return sequence(
+		"/*",
+		repetition(choice(
+			rust_block_comment,
+			but("*/")
+		)),
+		optional("*/")
+	);
+});
 
 constexpr auto rust_syntax = repetition(choice(
 	// comments
 	highlight(Style::COMMENT, choice(
-		rust_block_comment(),
+		rust_block_comment,
 		sequence("//", repetition(but('\n')))
 	)),
 	// literals

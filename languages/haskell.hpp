@@ -1,27 +1,20 @@
 constexpr auto haskell_identifier_char = choice(range('a', 'z'), '_', range('A', 'Z'), range('0', '9'), '\'');
 
-class HaskellBlockComment {
-public:
-	constexpr HaskellBlockComment() {}
-	template <class C> bool match(C& c) const {
-		return sequence(
-			"{-",
-			repetition(choice(
-				*this,
-				but("-}")
-			)),
-			optional("-}")
-		).match(c);
-	}
-};
-constexpr HaskellBlockComment haskell_block_comment() {
-	return HaskellBlockComment();
-}
+constexpr auto haskell_block_comment = recursive([](auto haskell_block_comment) {
+	return sequence(
+		"{-",
+		repetition(choice(
+			haskell_block_comment,
+			but("-}")
+		)),
+		optional("-}")
+	);
+});
 
 constexpr auto haskell_syntax = repetition(choice(
 	// comments
 	highlight(Style::COMMENT, choice(
-		haskell_block_comment(),
+		haskell_block_comment,
 		sequence("--", repetition(but('\n')))
 	)),
 	// keywords

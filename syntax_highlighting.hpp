@@ -333,6 +333,15 @@ public:
 	}
 };
 
+template <class F> class Recursive {
+	F f;
+public:
+	constexpr Recursive(F f): f(f) {}
+	template <class C> bool match(C& c) const {
+		return f(*this).match(c);
+	}
+};
+
 constexpr auto get_language_node(char c) {
 	return Char([c](char i) {
 		return i == c;
@@ -390,6 +399,9 @@ template <class T> constexpr auto but(T child) {
 }
 constexpr auto end() {
 	return not_(any_char());
+}
+template <class F> constexpr auto recursive(F f) {
+	return Recursive(f);
 }
 
 constexpr auto hex_digit = choice(range('0', '9'), range('a', 'f'), range('A', 'F'));
