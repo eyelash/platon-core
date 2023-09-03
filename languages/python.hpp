@@ -10,11 +10,18 @@ constexpr auto python_syntax = repetition(choice(
 		"True"
 	))),
 	// keywords
+	sequence(
+		highlight(Style::KEYWORD, c_keyword("def")),
+		zero_or_more(' '),
+		optional(highlight(Style::FUNCTION, c_identifier))
+	),
+	sequence(
+		highlight(Style::KEYWORD, c_keyword("class")),
+		zero_or_more(' '),
+		optional(highlight(Style::TYPE, c_identifier))
+	),
 	highlight(Style::WORD, highlight(Style::KEYWORD, c_keywords(
 		"lambda",
-		"and",
-		"or",
-		"not",
 		"if",
 		"elif",
 		"else",
@@ -24,9 +31,19 @@ constexpr auto python_syntax = repetition(choice(
 		"break",
 		"continue",
 		"return",
-		"def",
-		"class",
 		"import"
+	))),
+	// operators
+	highlight(Style::WORD, highlight(Style::OPERATOR, c_keywords(
+		"and",
+		"or",
+		"not",
+		"is",
+		"in"
+	))),
+	highlight(Style::WORD, highlight(Style::OPERATOR, choice(
+		"**", "//", '+', '-', '*', '/', '%',
+		"==", "!=", "<=", ">=", '<', '>'
 	))),
 	// identifiers
 	highlight(Style::WORD, c_identifier),
