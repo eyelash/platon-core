@@ -473,41 +473,29 @@ template <class E, class T> class LanguageImplementation: public LanguageInterfa
 			spans.emplace_back(pos, 0, style);
 		}
 	}
-	static void flatten_highlights(const std::vector<Span>& spans, std::size_t& i, std::vector<Span>& result, int outer_style = Style::DEFAULT) {
+	template <class F> static void flatten(const std::vector<Span>& spans, F f, std::size_t& i, std::vector<Span>& result, int outer_style = Style::DEFAULT) {
 		const Span& span = spans[i];
 		++i;
-		const int style = span.style >= Style::DEFAULT ? span.style : outer_style;
+		const int style = f(span.style) ? span.style : outer_style;
 		change_style(result, span.first, style, outer_style);
 		while (i < spans.size() && spans[i].last <= span.last) {
-			flatten_highlights(spans, i, result, style);
+			flatten(spans, f, i, result, style);
 		}
 		change_style(result, span.last, outer_style, style);
+	}
+	template <class F> static std::vector<Span> flatten(const std::vector<Span>& spans, F f) {
+		std::vector<Span> result;
+		std::size_t i = 0;
+		while (i < spans.size()) {
+			flatten(spans, f, i, result);
+		}
+		return result;
 	}
 	static std::vector<Span> flatten_highlights(const std::vector<Span>& spans) {
-		std::vector<Span> result;
-		std::size_t i = 0;
-		while (i < spans.size()) {
-			flatten_highlights(spans, i, result);
-		}
-		return result;
-	}
-	static void flatten_words(const std::vector<Span>& spans, std::size_t& i, std::vector<Span>& result, int outer_style = Style::DEFAULT) {
-		const Span& span = spans[i];
-		++i;
-		const int style = span.style == Style::WORD ? span.style : outer_style;
-		change_style(result, span.first, style, outer_style);
-		while (i < spans.size() && spans[i].last <= span.last) {
-			flatten_words(spans, i, result, style);
-		}
-		change_style(result, span.last, outer_style, style);
+		return flatten(spans, [](int style) { return style >= Style::DEFAULT; });
 	}
 	static std::vector<Span> flatten_words(const std::vector<Span>& spans) {
-		std::vector<Span> result;
-		std::size_t i = 0;
-		while (i < spans.size()) {
-			flatten_words(spans, i, result);
-		}
-		return result;
+		return flatten(spans, [](int style) { return style == Style::WORD; });
 	}
 	void parse_if_necessary(const E& buffer) {
 		if (highlights.empty() && words.empty()) {
