@@ -594,30 +594,57 @@ template <class T> constexpr auto ends_with(T t) {
 	return sequence(repetition(but(e)), e);
 }
 
+template <class T0, class T1> class Language {
+	T0 file_name;
+	T1 syntax;
+public:
+	constexpr Language(T0 file_name, T1 syntax): file_name(file_name), syntax(syntax) {}
+	bool check_file_name(const char* file_name) const {
+		return match_string(this->file_name, file_name);
+	}
+	template <class E> std::unique_ptr<LanguageInterface<E>> instantiate() const {
+		return std::make_unique<LanguageImplementation<E, T1>>(syntax);
+	}
+};
+
+template <class... T> class Languages;
+template <> class Languages<> {
+public:
+	constexpr Languages() {}
+	template <class E> std::unique_ptr<LanguageInterface<E>> get_language(const char* file_name) const {
+		return std::make_unique<NoLanguage<E>>();
+	}
+};
+template <class T0, class... T> class Languages<T0, T...> {
+	T0 t0;
+	Languages<T...> languages;
+public:
+	constexpr Languages(T0 t0, T... t): t0(t0), languages(t...) {}
+	template <class E> std::unique_ptr<LanguageInterface<E>> get_language(const char* file_name) const {
+		if (t0.check_file_name(file_name)) {
+			return t0.template instantiate<E>();
+		}
+		return languages.template get_language<E>(file_name);
+	}
+};
+template <class... T> Languages(T...) -> Languages<T...>;
+
+template <class T0, class T1> constexpr auto language(T0 file_name, T1 syntax) {
+	return Language(file_name, syntax);
+}
+template <class... T> constexpr auto languages(T... t) {
+	return Languages(t...);
+}
+
 template <class E> std::unique_ptr<LanguageInterface<E>> get_language(const E& buffer, const char* file_name) {
-	if (match_string(ends_with(".c"), file_name)) {
-		return std::make_unique<LanguageImplementation<E, decltype(c_syntax)>>(c_syntax);
-	}
-	if (match_string(ends_with(choice(".cpp", ".cc", ".hpp", ".hh", ".h")), file_name)) {
-		return std::make_unique<LanguageImplementation<E, decltype(cplusplus_syntax)>>(cplusplus_syntax);
-	}
-	if (match_string(ends_with(".java"), file_name)) {
-		return std::make_unique<LanguageImplementation<E, decltype(java_syntax)>>(java_syntax);
-	}
-	if (match_string(ends_with(choice(".xml", ".svg")), file_name)) {
-		return std::make_unique<LanguageImplementation<E, decltype(xml_syntax)>>(xml_syntax);
-	}
-	if (match_string(ends_with(".js"), file_name)) {
-		return std::make_unique<LanguageImplementation<E, decltype(javascript_syntax)>>(javascript_syntax);
-	}
-	if (match_string(ends_with(".py"), file_name)) {
-		return std::make_unique<LanguageImplementation<E, decltype(python_syntax)>>(python_syntax);
-	}
-	if (match_string(ends_with(".rs"), file_name)) {
-		return std::make_unique<LanguageImplementation<E, decltype(rust_syntax)>>(rust_syntax);
-	}
-	if (match_string(ends_with(".hs"), file_name)) {
-		return std::make_unique<LanguageImplementation<E, decltype(haskell_syntax)>>(haskell_syntax);
-	}
-	return std::make_unique<NoLanguage<E>>();
+	return languages(
+		language(ends_with(".c"), c_syntax),
+		language(ends_with(choice(".cpp", ".cc", ".hpp", ".hh", ".h")), cplusplus_syntax),
+		language(ends_with(".java"), java_syntax),
+		language(ends_with(choice(".xml", ".svg")), xml_syntax),
+		language(ends_with(".js"), javascript_syntax),
+		language(ends_with(".py"), python_syntax),
+		language(ends_with(".rs"), rust_syntax),
+		language(ends_with(".hs"), haskell_syntax)
+	).get_language<E>(file_name);
 }
