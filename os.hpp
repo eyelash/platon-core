@@ -25,6 +25,14 @@ class Mmap {
 public:
 	Mmap(const char* path) {
 		#ifdef _WIN32
+		HANDLE file = CreateFile(path, GENERIC_READ, 0, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+		LARGE_INTEGER large_integer;
+		GetFileSizeEx(file, &large_integer);
+		size = large_integer.QuadPart;
+		HANDLE mapping = CreateFileMapping(file, nullptr, PAGE_READONLY, 0, 0, nullptr);
+		map = static_cast<char*>(MapViewOfFile(mapping, FILE_MAP_READ, 0, 0, size));
+		CloseHandle(mapping);
+		CloseHandle(file);
 		#else
 		const int fd = open(path, O_RDONLY);
 		struct stat stat;
@@ -37,6 +45,7 @@ public:
 	Mmap(const Mmap&) = delete;
 	~Mmap() {
 		#ifdef _WIN32
+		UnmapViewOfFile(map);
 		#else
 		munmap(map, size);
 		#endif
