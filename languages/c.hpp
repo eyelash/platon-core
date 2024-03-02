@@ -1,3 +1,4 @@
+constexpr auto c_whitespace_char = choice(' ', '\t', '\n', '\r', '\v', '\f');
 constexpr auto c_identifier_begin_char = choice(range('a', 'z'), range('A', 'Z'), '_');
 constexpr auto c_identifier_char = choice(range('a', 'z'), range('A', 'Z'), '_', range('0', '9'));
 constexpr auto c_identifier = sequence(c_identifier_begin_char, zero_or_more(c_identifier_char));
@@ -12,7 +13,14 @@ constexpr auto c_comment = choice(
 	sequence("/*", repetition(but("*/")), optional("*/")),
 	sequence("//", repetition(but('\n')))
 );
-constexpr auto c_escape = sequence('\\', any_char());
+constexpr auto c_escape = sequence('\\', choice(
+	'a', 'b', 't', 'n', 'v', 'f', 'r',
+	'"', '\'', '?', '\\',
+	one_or_more(range('0', '7')),
+	sequence('x', one_or_more(hex_digit)),
+	sequence('u', one_or_more(hex_digit)),
+	sequence('U', one_or_more(hex_digit))
+));
 constexpr auto c_string = sequence(
 	optional(choice('L', "u8", 'u', 'U')),
 	'"',
@@ -77,8 +85,35 @@ constexpr auto c_number = sequence(
 	// suffix
 	zero_or_more(choice('u', 'U', 'l', 'L', 'f', 'F'))
 );
+constexpr auto c_preprocessor = sequence(
+	'#',
+	zero_or_more(choice(' ', '\t')),
+	choice(
+		sequence(
+			c_keyword("include"),
+			zero_or_more(choice(' ', '\t')),
+			optional(highlight(Style::STRING, choice(
+				sequence(
+					'<',
+					repetition(but(choice('>', '\n'))),
+					optional('>')
+				),
+				sequence(
+					'"',
+					repetition(but(choice('"', '\n'))),
+					optional('"')
+				)
+			)))
+		),
+		c_keyword("if"),
+		c_keyword("else"),
+		c_keyword("endif")
+	)
+);
 
 constexpr auto c_syntax = repetition(choice(
+	// whitespace
+	one_or_more(c_whitespace_char),
 	// comments
 	highlight(Style::COMMENT, c_comment),
 	// strings and characters

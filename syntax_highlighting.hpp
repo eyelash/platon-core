@@ -208,9 +208,8 @@ public:
 
 class String {
 	const char* string;
-	std::size_t length;
 public:
-	constexpr String(const char* string): string(string), length(std::char_traits<char>::length(string)) {}
+	constexpr String(const char* string): string(string) {}
 	template <class C> bool match(C& c) const {
 		auto save_point = c.save();
 		for (const char* s = string; *s != '\0'; ++s) {
@@ -425,7 +424,7 @@ public:
 	virtual void get_previous_word(const E& buffer, std::size_t index, std::size_t& word_start, std::size_t& word_end) = 0;
 };
 
-template <class E> class NoLanguage: public LanguageInterface<E> {
+template <class E> class NoLanguage final: public LanguageInterface<E> {
 public:
 	void invalidate(std::size_t index) override {}
 	void highlight(const E& buffer, JSONWriter& writer, std::size_t index0, std::size_t index1) override {
@@ -457,7 +456,7 @@ template <class T> Reverse<T> reverse(T& t) {
 	return Reverse<T>(t);
 }
 
-template <class E, class T> class LanguageImplementation: public LanguageInterface<E> {
+template <class E, class T> class LanguageImplementation final: public LanguageInterface<E> {
 	T syntax;
 	std::vector<Span> highlights;
 	std::vector<Span> words;

@@ -9,7 +9,7 @@ constexpr Theme one_dark_theme = {
 	Style(Color::hsl(220, 13, 18) + Color::hsl(220, 14, 71).with_alpha(0.6f)), // number_active
 	{
 		Style(Color::hsl(220, 14, 71)), // text
-		Style(Color::hsl(220, 10, 40), Weight::NORMAL, true), // comments
+		Style(Color::hsl(220, 10, 40), Style::ITALIC), // comments
 		Style(Color::hsl(286, 60, 67)), // keywords
 		Style(Color::hsl(286, 60, 67)), // operators
 		Style(Color::hsl(187, 47, 55)), // types
