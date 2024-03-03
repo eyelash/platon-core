@@ -7,7 +7,7 @@
 #include <vector>
 #include <fstream>
 
-class TextBuffer {
+class TextBuffer final: public Input {
 	struct Info {
 		using T = char;
 		std::size_t chars;
@@ -92,6 +92,20 @@ public:
 	void save(const char* path) {
 		std::ofstream file(path);
 		std::copy(tree.begin(), tree.end(), std::ostreambuf_iterator<char>(file));
+	}
+	std::pair<Input::Chunk, std::size_t> get_chunk(std::size_t index) const override {
+		const auto iterator = get_iterator(index);
+		auto leaf = iterator.get_leaf();
+		return {{leaf, leaf->children.get_data(), leaf->children.get_size()}, index - iterator.get_index()};
+	}
+	Input::Chunk get_next_chunk(const void* chunk) const override {
+		auto next_leaf = static_cast<const Tree<Info>::Leaf*>(chunk)->next_leaf;
+		if (next_leaf) {
+			return {next_leaf, next_leaf->children.get_data(), next_leaf->children.get_size()};
+		}
+		else {
+			return {};
+		}
 	}
 };
 
@@ -499,7 +513,7 @@ public:
 		static std::string json;
 		json.clear();
 		JSONWriter writer(json);
-		one_dark_theme.write(writer);
+		write_theme(prism::get_theme("one-dark"), writer);
 		return json.c_str();
 	}
 	const char* copy() const {

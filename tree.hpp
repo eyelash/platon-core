@@ -167,6 +167,7 @@ inline TreeEndComp tree_end() {
 }
 
 template <class I> class Tree {
+public:
 	using T = typename I::T;
 	struct Node {
 		I info;
@@ -182,7 +183,6 @@ template <class I> class Tree {
 		StaticVector<Node*, SIZE> children;
 	};
 
-public:
 	class Iterator {
 		Leaf* leaf;
 		std::size_t i;
@@ -209,6 +209,12 @@ public:
 				i = 0;
 			}
 			return *this;
+		}
+		const Leaf* get_leaf() const {
+			return leaf;
+		}
+		std::size_t get_index() const {
+			return i;
 		}
 	};
 private:
