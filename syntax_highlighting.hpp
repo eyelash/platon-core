@@ -118,10 +118,10 @@ struct Theme {
 
 class Span {
 public:
-	std::size_t first;
-	std::size_t last;
+	std::size_t start;
+	std::size_t end;
 	int style;
-	constexpr Span(std::size_t first, std::size_t last, int style): first(first), last(last), style(style) {}
+	constexpr Span(std::size_t start, std::size_t end, int style): start(start), end(end), style(style) {}
 };
 
 class StringParseContext {
@@ -180,7 +180,7 @@ public:
 	}
 	void set_style(const SavePoint& save_point, int style) {
 		Span& span = spans[std::get<2>(save_point)];
-		span.last = pos;
+		span.end = pos;
 		span.style = style;
 	}
 	void restore(const SavePoint& save_point) {
@@ -466,7 +466,7 @@ template <class E, class T> class LanguageImplementation final: public LanguageI
 		}
 		// TODO: handle empty spans
 		if (previous_style != Style::DEFAULT) {
-			spans.back().last = pos;
+			spans.back().end = pos;
 		}
 		if (style != Style::DEFAULT) {
 			spans.emplace_back(pos, 0, style);
@@ -476,11 +476,11 @@ template <class E, class T> class LanguageImplementation final: public LanguageI
 		const Span& span = spans[i];
 		++i;
 		const int style = f(span.style) ? span.style : outer_style;
-		change_style(result, span.first, style, outer_style);
-		while (i < spans.size() && spans[i].last <= span.last) {
+		change_style(result, span.start, style, outer_style);
+		while (i < spans.size() && spans[i].end <= span.end) {
 			flatten(spans, f, i, result, style);
 		}
-		change_style(result, span.last, outer_style, style);
+		change_style(result, span.end, outer_style, style);
 	}
 	template <class F> static std::vector<Span> flatten(const std::vector<Span>& spans, F f) {
 		std::vector<Span> result;
@@ -518,13 +518,13 @@ public:
 		}
 		parse_if_necessary(buffer);
 		auto i = std::upper_bound(highlights.begin(), highlights.end(), index0, [](std::size_t index0, const Span& span) {
-			return index0 < span.last;
+			return index0 < span.end;
 		});
 		writer.write_array([&](JSONArrayWriter& writer) {
-			for (; i != highlights.end() && i->first < index1; ++i) {
+			for (; i != highlights.end() && i->start < index1; ++i) {
 				writer.write_element().write_array([&](JSONArrayWriter& writer) {
-					writer.write_element().write_number(std::max(i->first, index0) - index0);
-					writer.write_element().write_number(std::min(i->last, index1) - index0);
+					writer.write_element().write_number(std::max(i->start, index0) - index0);
+					writer.write_element().write_number(std::min(i->end, index1) - index0);
 					writer.write_element().write_number(i->style - Style::DEFAULT);
 				});
 			}
@@ -537,11 +537,11 @@ public:
 		}
 		parse_if_necessary(buffer);
 		auto i = std::lower_bound(words.begin(), words.end(), index, [](const Span& span, std::size_t index) {
-			return span.last < index;
+			return span.end < index;
 		});
-		if (i != words.end() && i->first <= index) {
-			word_start = i->first;
-			word_end = i->last;
+		if (i != words.end() && i->start <= index) {
+			word_start = i->start;
+			word_end = i->end;
 		}
 		else {
 			word_start = word_end = index;
@@ -554,11 +554,11 @@ public:
 		}
 		parse_if_necessary(buffer);
 		auto i = std::upper_bound(words.begin(), words.end(), index, [](std::size_t index, const Span& span) {
-			return index < span.last;
+			return index < span.end;
 		});
 		if (i != words.end()) {
-			word_start = i->first;
-			word_end = i->last;
+			word_start = i->start;
+			word_end = i->end;
 		}
 		else {
 			word_start = word_end = buffer.get_size() - 1;
@@ -571,11 +571,11 @@ public:
 		}
 		parse_if_necessary(buffer);
 		auto i = std::upper_bound(words.rbegin(), words.rend(), index, [](std::size_t index, const Span& span) {
-			return index > span.first;
+			return index > span.start;
 		});
 		if (i != words.rend()) {
-			word_start = i->first;
-			word_end = i->last;
+			word_start = i->start;
+			word_end = i->end;
 		}
 		else {
 			word_start = word_end = 0;
