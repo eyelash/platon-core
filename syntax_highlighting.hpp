@@ -64,10 +64,10 @@ public:
 };
 
 template <class E> class PrismLanguage final: public LanguageInterface<E> {
-	const char* language;
+	const Language* language;
 	prism::Tree tree;
 public:
-	PrismLanguage(const char* language): language(language) {}
+	PrismLanguage(const Language* language): language(language) {}
 	void invalidate(std::size_t index) override {
 		tree.edit(index);
 	}
@@ -76,8 +76,8 @@ public:
 		writer.write_array([&](JSONArrayWriter& writer) {
 			for (const Span& span: spans) {
 				writer.write_element().write_array([&](JSONArrayWriter& writer) {
-					writer.write_element().write_number(std::max(span.start, index0) - index0);
-					writer.write_element().write_number(std::min(span.end, index1) - index0);
+					writer.write_element().write_number(span.start - index0);
+					writer.write_element().write_number(span.end - index0);
 					writer.write_element().write_number(span.style - Style::DEFAULT);
 				});
 			}
@@ -95,7 +95,7 @@ public:
 };
 
 template <class E> std::unique_ptr<LanguageInterface<E>> get_language(const E& buffer, const char* file_name) {
-	const char* language = prism::get_language(file_name);
+	const Language* language = prism::get_language(file_name);
 	if (language) {
 		return std::make_unique<PrismLanguage<E>>(language);
 	}

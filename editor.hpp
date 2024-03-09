@@ -104,7 +104,7 @@ public:
 			return {next_leaf, next_leaf->children.get_data(), next_leaf->children.get_size()};
 		}
 		else {
-			return {};
+			return {nullptr, "", 0};
 		}
 	}
 };
