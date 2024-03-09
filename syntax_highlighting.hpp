@@ -36,34 +36,34 @@ inline void write_theme(const Theme& theme, JSONWriter& writer) {
 	});
 }
 
-template <class E> class LanguageInterface {
+class LanguageInterface {
 public:
 	virtual ~LanguageInterface() = default;
 	virtual void invalidate(std::size_t index) = 0;
-	virtual void highlight(const E& buffer, JSONWriter& writer, std::size_t index0, std::size_t index1) = 0;
-	virtual void get_word(const E& buffer, std::size_t index, std::size_t& word_start, std::size_t& word_end) = 0;
-	virtual void get_next_word(const E& buffer, std::size_t index, std::size_t& word_start, std::size_t& word_end) = 0;
-	virtual void get_previous_word(const E& buffer, std::size_t index, std::size_t& word_start, std::size_t& word_end) = 0;
+	virtual void highlight(const Input& buffer, JSONWriter& writer, std::size_t index0, std::size_t index1) = 0;
+	virtual void get_word(const Input& input, std::size_t index, std::size_t& word_start, std::size_t& word_end) = 0;
+	virtual void get_next_word(const Input& input, std::size_t index, std::size_t& word_start, std::size_t& word_end) = 0;
+	virtual void get_previous_word(const Input& input, std::size_t index, std::size_t& word_start, std::size_t& word_end) = 0;
 };
 
-template <class E> class NoLanguage final: public LanguageInterface<E> {
+class NoLanguage final: public LanguageInterface {
 public:
 	void invalidate(std::size_t index) override {}
-	void highlight(const E& buffer, JSONWriter& writer, std::size_t index0, std::size_t index1) override {
+	void highlight(const Input& buffer, JSONWriter& writer, std::size_t index0, std::size_t index1) override {
 		writer.write_array([](JSONArrayWriter& writer) {});
 	}
-	void get_word(const E& buffer, std::size_t index, std::size_t& word_start, std::size_t& word_end) override {
+	void get_word(const Input& input, std::size_t index, std::size_t& word_start, std::size_t& word_end) override {
 		word_start = word_end = index;
 	}
-	void get_next_word(const E& buffer, std::size_t index, std::size_t& word_start, std::size_t& word_end) override {
+	void get_next_word(const Input& input, std::size_t index, std::size_t& word_start, std::size_t& word_end) override {
 		word_start = word_end = index;
 	}
-	void get_previous_word(const E& buffer, std::size_t index, std::size_t& word_start, std::size_t& word_end) override {
+	void get_previous_word(const Input& input, std::size_t index, std::size_t& word_start, std::size_t& word_end) override {
 		word_start = word_end = index;
 	}
 };
 
-template <class E> class PrismLanguage final: public LanguageInterface<E> {
+class PrismLanguage final: public LanguageInterface {
 	const Language* language;
 	prism::Tree tree;
 public:
@@ -71,8 +71,8 @@ public:
 	void invalidate(std::size_t index) override {
 		tree.edit(index);
 	}
-	void highlight(const E& buffer, JSONWriter& writer, std::size_t index0, std::size_t index1) override {
-		auto spans = prism::highlight(language, &buffer, tree, index0, index1);
+	void highlight(const Input& input, JSONWriter& writer, std::size_t index0, std::size_t index1) override {
+		auto spans = prism::highlight(language, &input, tree, index0, index1);
 		writer.write_array([&](JSONArrayWriter& writer) {
 			for (const Span& span: spans) {
 				writer.write_element().write_array([&](JSONArrayWriter& writer) {
@@ -83,23 +83,23 @@ public:
 			}
 		});
 	}
-	void get_word(const E& buffer, std::size_t index, std::size_t& word_start, std::size_t& word_end) override {
+	void get_word(const Input& input, std::size_t index, std::size_t& word_start, std::size_t& word_end) override {
 		word_start = word_end = index;
 	}
-	void get_next_word(const E& buffer, std::size_t index, std::size_t& word_start, std::size_t& word_end) override {
+	void get_next_word(const Input& input, std::size_t index, std::size_t& word_start, std::size_t& word_end) override {
 		word_start = word_end = index;
 	}
-	void get_previous_word(const E& buffer, std::size_t index, std::size_t& word_start, std::size_t& word_end) override {
+	void get_previous_word(const Input& input, std::size_t index, std::size_t& word_start, std::size_t& word_end) override {
 		word_start = word_end = index;
 	}
 };
 
-template <class E> std::unique_ptr<LanguageInterface<E>> get_language(const E& buffer, const char* file_name) {
+std::unique_ptr<LanguageInterface> get_language(const char* file_name) {
 	const Language* language = prism::get_language(file_name);
 	if (language) {
-		return std::make_unique<PrismLanguage<E>>(language);
+		return std::make_unique<PrismLanguage>(language);
 	}
 	else {
-		return std::make_unique<NoLanguage<E>>();
+		return std::make_unique<NoLanguage>();
 	}
 }

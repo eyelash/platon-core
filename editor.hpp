@@ -161,7 +161,7 @@ public:
 
 class Editor {
 	TextBuffer buffer;
-	std::unique_ptr<LanguageInterface<TextBuffer>> language;
+	std::unique_ptr<LanguageInterface> language;
 	Selections selections;
 	std::size_t last_selection;
 	void render_selections(JSONObjectWriter& writer, std::size_t index0, std::size_t index1) const {
@@ -230,8 +230,8 @@ class Editor {
 		}
 	}
 public:
-	Editor(): language(std::make_unique<NoLanguage<TextBuffer>>()), last_selection(0) {}
-	Editor(const char* path): buffer(path), language(get_language(buffer, get_file_name(path))), last_selection(0) {}
+	Editor(): language(std::make_unique<NoLanguage>()), last_selection(0) {}
+	Editor(const char* path): buffer(path), language(get_language(get_file_name(path))), last_selection(0) {}
 	std::size_t get_total_lines() const {
 		return buffer.get_total_lines();
 	}
