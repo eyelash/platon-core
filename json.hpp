@@ -23,6 +23,9 @@ public:
 	void write_string(const char* s) {
 		write_string(s, s + strlen(s));
 	}
+	void write_string(const std::string& s) {
+		write_string(s.begin(), s.end());
+	}
 	void write_number(std::int64_t n) {
 		if (n < 0) {
 			string.push_back('-');

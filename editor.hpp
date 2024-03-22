@@ -2,7 +2,6 @@
 
 #include "os.hpp"
 #include "tree.hpp"
-#include "json.hpp"
 #include "syntax_highlighting.hpp"
 #include <vector>
 #include <fstream>
@@ -159,29 +158,30 @@ public:
 	}
 };
 
+struct RenderedLine {
+	std::string text;
+	std::size_t number;
+	std::vector<Span> spans;
+	std::vector<Selection> selections;
+	std::vector<std::size_t> cursors;
+};
+
 class Editor {
 	TextBuffer buffer;
 	std::unique_ptr<LanguageInterface> language;
 	Selections selections;
 	std::size_t last_selection;
-	void render_selections(JSONObjectWriter& writer, std::size_t index0, std::size_t index1) const {
-		writer.write_member("selections").write_array([&](JSONArrayWriter& writer) {
-			for (const Selection& selection: selections) {
-				if (selection.max() > index0 && selection.min() < index1) {
-					writer.write_element().write_array([&](JSONArrayWriter& writer) {
-						writer.write_element().write_number(std::max(selection.min(), index0) - index0);
-						writer.write_element().write_number(std::min(selection.max(), index1) - index0);
-					});
-				}
+	void render_selections(RenderedLine& line, std::size_t index0, std::size_t index1) const {
+		for (const Selection& selection: selections) {
+			if (selection.max() > index0 && selection.min() < index1) {
+				line.selections.emplace_back(std::max(selection.min(), index0) - index0, std::min(selection.max(), index1) - index0);
 			}
-		});
-		writer.write_member("cursors").write_array([&](JSONArrayWriter& writer) {
-			for (const Selection& selection: selections) {
-				if (selection.last >= index0 && selection.last < index1) {
-					writer.write_element().write_number(selection.last - index0);
-				}
+		}
+		for (const Selection& selection: selections) {
+			if (selection.last >= index0 && selection.last < index1) {
+				line.cursors.emplace_back(selection.last - index0);
 			}
-		});
+		}
 	}
 	static const char* get_file_name(const char* path) {
 		const char* file_name = path;
@@ -235,27 +235,22 @@ public:
 	std::size_t get_total_lines() const {
 		return buffer.get_total_lines();
 	}
-	const char* render(std::size_t first_line, std::size_t last_line) const {
-		static std::string json;
-		json.clear();
-		JSONWriter writer(json);
-		writer.write_array([&](JSONArrayWriter& writer) {
-			for (std::size_t i = first_line; i < last_line; ++i) {
-				writer.write_element().write_object([&](JSONObjectWriter& writer) {
-					std::size_t index0 = 0;
-					std::size_t index1 = 0;
-					if (i < get_total_lines()) {
-						index0 = buffer.get_index(i);
-						index1 = buffer.get_index(i + 1);
-					}
-					writer.write_member("text").write_string(buffer.get_iterator(index0), buffer.get_iterator(index1));
-					writer.write_member("number").write_number(i + 1);
-					language->highlight(buffer, writer.write_member("spans"), index0, index1);
-					render_selections(writer, index0, index1);
-				});
+	std::vector<RenderedLine> render(std::size_t first_line, std::size_t last_line) const {
+		std::vector<RenderedLine> lines;
+		for (std::size_t i = first_line; i < last_line; ++i) {
+			RenderedLine& line = lines.emplace_back();
+			std::size_t index0 = 0;
+			std::size_t index1 = 0;
+			if (i < get_total_lines()) {
+				index0 = buffer.get_index(i);
+				index1 = buffer.get_index(i + 1);
 			}
-		});
-		return json.c_str();
+			line.text = std::string(buffer.get_iterator(index0), buffer.get_iterator(index1));
+			line.number = i + 1;
+			language->highlight(buffer, line.spans, index0, index1);
+			render_selections(line, index0, index1);
+		}
+		return lines;
 	}
 	void insert_text(const char* text) {
 		delete_selections();
@@ -509,12 +504,8 @@ public:
 		selections.emplace_back(0, buffer.get_size() - 1);
 		last_selection = 0;
 	}
-	const char* get_theme() const {
-		static std::string json;
-		json.clear();
-		JSONWriter writer(json);
-		write_theme(prism::get_theme("one-dark"), writer);
-		return json.c_str();
+	const Theme& get_theme() const {
+		return prism::get_theme("one-dark");
 	}
 	const char* copy() const {
 		static std::string string;

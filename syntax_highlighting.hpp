@@ -3,44 +3,11 @@
 #include "prism/prism.hpp"
 #include <memory>
 
-inline void write_color(const Color& color, JSONWriter& writer) {
-	writer.write_array([&](JSONArrayWriter& writer) {
-		writer.write_element().write_number(color.r * 255.f + .5f);
-		writer.write_element().write_number(color.g * 255.f + .5f);
-		writer.write_element().write_number(color.b * 255.f + .5f);
-		writer.write_element().write_number(color.a * 255.f + .5f);
-	});
-}
-inline void write_style(const Style& style, JSONWriter& writer) {
-	writer.write_object([&](JSONObjectWriter& writer) {
-		write_color(style.color, writer.write_member("color"));
-		writer.write_member("bold").write_boolean(style.bold);
-		writer.write_member("italic").write_boolean(style.italic);
-	});
-}
-inline void write_theme(const Theme& theme, JSONWriter& writer) {
-	writer.write_object([&](JSONObjectWriter& writer) {
-		write_color(theme.background, writer.write_member("background"));
-		write_color(theme.background_active, writer.write_member("background_active"));
-		write_color(theme.selection, writer.write_member("selection"));
-		write_color(theme.cursor, writer.write_member("cursor"));
-		write_color(theme.number_background, writer.write_member("number_background"));
-		write_color(theme.number_background_active, writer.write_member("number_background_active"));
-		write_style(theme.number, writer.write_member("number"));
-		write_style(theme.number_active, writer.write_member("number_active"));
-		writer.write_member("styles").write_array([&](JSONArrayWriter& writer) {
-			for (const Style& style: theme.styles) {
-				write_style(style, writer.write_element());
-			}
-		});
-	});
-}
-
 class LanguageInterface {
 public:
 	virtual ~LanguageInterface() = default;
 	virtual void invalidate(std::size_t index) = 0;
-	virtual void highlight(const Input& buffer, JSONWriter& writer, std::size_t index0, std::size_t index1) = 0;
+	virtual void highlight(const Input& input, std::vector<Span>& spans, std::size_t index0, std::size_t index1) = 0;
 	virtual void get_word(const Input& input, std::size_t index, std::size_t& word_start, std::size_t& word_end) = 0;
 	virtual void get_next_word(const Input& input, std::size_t index, std::size_t& word_start, std::size_t& word_end) = 0;
 	virtual void get_previous_word(const Input& input, std::size_t index, std::size_t& word_start, std::size_t& word_end) = 0;
@@ -49,9 +16,7 @@ public:
 class NoLanguage final: public LanguageInterface {
 public:
 	void invalidate(std::size_t index) override {}
-	void highlight(const Input& buffer, JSONWriter& writer, std::size_t index0, std::size_t index1) override {
-		writer.write_array([](JSONArrayWriter& writer) {});
-	}
+	void highlight(const Input& input, std::vector<Span>& spans, std::size_t index0, std::size_t index1) override {}
 	void get_word(const Input& input, std::size_t index, std::size_t& word_start, std::size_t& word_end) override {
 		word_start = word_end = index;
 	}
@@ -65,23 +30,16 @@ public:
 
 class PrismLanguage final: public LanguageInterface {
 	const Language* language;
-	prism::Tree tree;
+	Cache cache;
 public:
 	PrismLanguage(const Language* language): language(language) {}
 	void invalidate(std::size_t index) override {
-		tree.edit(index);
+		cache.invalidate(index);
 	}
-	void highlight(const Input& input, JSONWriter& writer, std::size_t index0, std::size_t index1) override {
-		auto spans = prism::highlight(language, &input, tree, index0, index1);
-		writer.write_array([&](JSONArrayWriter& writer) {
-			for (const Span& span: spans) {
-				writer.write_element().write_array([&](JSONArrayWriter& writer) {
-					writer.write_element().write_number(span.start - index0);
-					writer.write_element().write_number(span.end - index0);
-					writer.write_element().write_number(span.style - Style::DEFAULT);
-				});
-			}
-		});
+	void highlight(const Input& input, std::vector<Span>& spans, std::size_t index0, std::size_t index1) override {
+		for (const Span& span: prism::highlight(language, &input, cache, index0, index1)) {
+			spans.push_back({span.start - index0, span.end - index0, span.style});
+		}
 	}
 	void get_word(const Input& input, std::size_t index, std::size_t& word_start, std::size_t& word_end) override {
 		word_start = word_end = index;
