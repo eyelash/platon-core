@@ -2,7 +2,52 @@
 #include "editor.hpp"
 #include "json.hpp"
 
-static void write_color(const Color& color, JSONWriter& writer) {
+static void write(JSONWriter& writer, const std::string& s) {
+	writer.write_string(s);
+}
+static void write(JSONWriter& writer, std::size_t n) {
+	writer.write_number(n);
+}
+static void write(JSONWriter& writer, bool b) {
+	writer.write_boolean(b);
+}
+template <class T, std::size_t N> static void write(JSONWriter& writer, const T (&array)[N]) {
+	writer.write_array([&](JSONArrayWriter& writer) {
+		for (const T& element: array) {
+			write(writer.write_element(), element);
+		}
+	});
+}
+template <class T> static void write(JSONWriter& writer, const std::vector<T>& array) {
+	writer.write_array([&](JSONArrayWriter& writer) {
+		for (const T& element: array) {
+			write(writer.write_element(), element);
+		}
+	});
+}
+static void write(JSONWriter& writer, const Span& span) {
+	writer.write_array([&](JSONArrayWriter& writer) {
+		writer.write_element().write_number(span.start);
+		writer.write_element().write_number(span.end);
+		writer.write_element().write_number(span.style - Style::DEFAULT);
+	});
+}
+static void write(JSONWriter& writer, const Selection& selection) {
+	writer.write_array([&](JSONArrayWriter& writer) {
+		writer.write_element().write_number(selection.first);
+		writer.write_element().write_number(selection.last);
+	});
+}
+static void write(JSONWriter& writer, const RenderedLine& line) {
+	writer.write_object([&](JSONObjectWriter& writer) {
+		write(writer.write_member("text"), line.text);
+		write(writer.write_member("number"), line.number);
+		write(writer.write_member("spans"), line.spans);
+		write(writer.write_member("selections"), line.selections);
+		write(writer.write_member("cursors"), line.cursors);
+	});
+}
+static void write(JSONWriter& writer, const Color& color) {
 	writer.write_array([&](JSONArrayWriter& writer) {
 		writer.write_element().write_number(color.r * 255.f + .5f);
 		writer.write_element().write_number(color.g * 255.f + .5f);
@@ -10,28 +55,24 @@ static void write_color(const Color& color, JSONWriter& writer) {
 		writer.write_element().write_number(color.a * 255.f + .5f);
 	});
 }
-static void write_style(const Style& style, JSONWriter& writer) {
+static void write(JSONWriter& writer, const Style& style) {
 	writer.write_object([&](JSONObjectWriter& writer) {
-		write_color(style.color, writer.write_member("color"));
-		writer.write_member("bold").write_boolean(style.bold);
-		writer.write_member("italic").write_boolean(style.italic);
+		write(writer.write_member("color"), style.color);
+		write(writer.write_member("bold"), style.bold);
+		write(writer.write_member("italic"), style.italic);
 	});
 }
-static void write_theme(const Theme& theme, JSONWriter& writer) {
+static void write(JSONWriter& writer, const Theme& theme) {
 	writer.write_object([&](JSONObjectWriter& writer) {
-		write_color(theme.background, writer.write_member("background"));
-		write_color(theme.background_active, writer.write_member("background_active"));
-		write_color(theme.selection, writer.write_member("selection"));
-		write_color(theme.cursor, writer.write_member("cursor"));
-		write_color(theme.number_background, writer.write_member("number_background"));
-		write_color(theme.number_background_active, writer.write_member("number_background_active"));
-		write_style(theme.number, writer.write_member("number"));
-		write_style(theme.number_active, writer.write_member("number_active"));
-		writer.write_member("styles").write_array([&](JSONArrayWriter& writer) {
-			for (const Style& style: theme.styles) {
-				write_style(style, writer.write_element());
-			}
-		});
+		write(writer.write_member("background"), theme.background);
+		write(writer.write_member("background_active"), theme.background_active);
+		write(writer.write_member("selection"), theme.selection);
+		write(writer.write_member("cursor"), theme.cursor);
+		write(writer.write_member("number_background"), theme.number_background);
+		write(writer.write_member("number_background_active"), theme.number_background_active);
+		write(writer.write_member("number"), theme.number);
+		write(writer.write_member("number_active"), theme.number_active);
+		write(writer.write_member("styles"), theme.styles);
 	});
 }
 
@@ -60,36 +101,7 @@ const char* platon_editor_render(PlatonEditor* editor, size_t first_line, size_t
 	static std::string json;
 	json.clear();
 	JSONWriter writer(json);
-	writer.write_array([&](JSONArrayWriter& writer) {
-		for (const RenderedLine& line: editor->render(first_line, last_line)) {
-			writer.write_element().write_object([&](JSONObjectWriter& writer) {
-				writer.write_member("text").write_string(line.text);
-				writer.write_member("number").write_number(line.number);
-				writer.write_member("spans").write_array([&](JSONArrayWriter& writer) {
-					for (const Span& span: line.spans) {
-						writer.write_element().write_array([&](JSONArrayWriter& writer) {
-							writer.write_element().write_number(span.start);
-							writer.write_element().write_number(span.end);
-							writer.write_element().write_number(span.style - Style::DEFAULT);
-						});
-					}
-				});
-				writer.write_member("selections").write_array([&](JSONArrayWriter& writer) {
-					for (const Selection& selection: line.selections) {
-						writer.write_element().write_array([&](JSONArrayWriter& writer) {
-							writer.write_element().write_number(selection.first);
-							writer.write_element().write_number(selection.last);
-						});
-					}
-				});
-				writer.write_member("cursors").write_array([&](JSONArrayWriter& writer) {
-					for (std::size_t cursor: line.cursors) {
-						writer.write_element().write_number(cursor);
-					}
-				});
-			});
-		}
-	});
+	write(writer, editor->render(first_line, last_line));
 	return json.c_str();
 }
 
@@ -161,7 +173,7 @@ const char* platon_editor_get_theme(const PlatonEditor* editor) {
 	static std::string json;
 	json.clear();
 	JSONWriter writer(json);
-	write_theme(editor->get_theme(), writer);
+	write(writer, editor->get_theme());
 	return json.c_str();
 }
 
