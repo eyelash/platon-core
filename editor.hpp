@@ -2,7 +2,7 @@
 
 #include "os.hpp"
 #include "tree.hpp"
-#include "syntax_highlighting.hpp"
+#include "prism/prism.hpp"
 #include <vector>
 #include <fstream>
 
@@ -168,9 +168,27 @@ struct RenderedLine {
 
 class Editor {
 	TextBuffer buffer;
-	std::unique_ptr<LanguageInterface> language;
+	const Language* language;
+	mutable Cache cache;
 	Selections selections;
 	std::size_t last_selection;
+	void highlight(std::vector<Span>& spans, std::size_t index0, std::size_t index1) const {
+		if (language == nullptr) {
+			return;
+		}
+		for (const Span& span: prism::highlight(language, &buffer, cache, index0, index1)) {
+			spans.push_back({span.start - index0, span.end - index0, span.style});
+		}
+	}
+	void get_word(std::size_t index, std::size_t& word_start, std::size_t& word_end) const {
+		word_start = word_end = index;
+	}
+	void get_next_word(std::size_t index, std::size_t& word_start, std::size_t& word_end) const {
+		word_start = word_end = index;
+	}
+	void get_previous_word(std::size_t index, std::size_t& word_start, std::size_t& word_end) const {
+		word_start = word_end = index;
+	}
 	void render_selections(RenderedLine& line, std::size_t index0, std::size_t index1) const {
 		for (const Selection& selection: selections) {
 			if (selection.max() > index0 && selection.min() < index1) {
@@ -203,7 +221,7 @@ class Editor {
 		for (Selection& selection: selections) {
 			selection -= offset;
 			if (selection.first != selection.last) {
-				language->invalidate(selection.min());
+				cache.invalidate(selection.min());
 				for (std::size_t i = selection.min(); i < selection.max(); ++i) {
 					buffer.remove(selection.min());
 					++offset;
@@ -230,8 +248,8 @@ class Editor {
 		}
 	}
 public:
-	Editor(): language(std::make_unique<NoLanguage>()), last_selection(0) {}
-	Editor(const char* path): buffer(path), language(get_language(get_file_name(path))), last_selection(0) {}
+	Editor(): language(nullptr), last_selection(0) {}
+	Editor(const char* path): buffer(path), language(prism::get_language(get_file_name(path))), last_selection(0) {}
 	std::size_t get_total_lines() const {
 		return buffer.get_total_lines();
 	}
@@ -247,7 +265,7 @@ public:
 			}
 			line.text = std::string(buffer.get_iterator(index0), buffer.get_iterator(index1));
 			line.number = i + 1;
-			language->highlight(buffer, line.spans, index0, index1);
+			highlight(line.spans, index0, index1);
 			render_selections(line, index0, index1);
 		}
 		return lines;
@@ -257,7 +275,7 @@ public:
 		std::size_t offset = 0;
 		for (Selection& selection: selections) {
 			selection += offset;
-			language->invalidate(selection.last);
+			cache.invalidate(selection.last);
 			for (const char* c = text; *c; ++c) {
 				buffer.insert(selection.last, *c);
 				selection += 1;
@@ -270,7 +288,7 @@ public:
 		std::size_t offset = 0;
 		for (Selection& selection: selections) {
 			selection += offset;
-			language->invalidate(selection.last);
+			cache.invalidate(selection.last);
 			buffer.insert(selection.last, '\n');
 			selection += 1;
 			++offset;
@@ -290,7 +308,7 @@ public:
 			if (selection.first == selection.last && selection.last > 0) {
 				selection.last = get_previous_index(selection.last);
 			}
-			language->invalidate(selection.min());
+			cache.invalidate(selection.min());
 			for (std::size_t i = selection.min(); i < selection.max(); ++i) {
 				buffer.remove(selection.min());
 				++offset;
@@ -307,7 +325,7 @@ public:
 			if (selection.first == selection.last && selection.last < last) {
 				selection.last = get_next_index(selection.last);
 			}
-			language->invalidate(selection.min());
+			cache.invalidate(selection.min());
 			for (std::size_t i = selection.min(); i < selection.max(); ++i) {
 				buffer.remove(selection.min());
 				--last;
@@ -448,7 +466,7 @@ public:
 	void move_to_beginning_of_word(bool extend_selection = false) {
 		for (Selection& selection: selections) {
 			std::size_t word_start, word_end;
-			language->get_previous_word(buffer, selection.last, word_start, word_end);
+			get_previous_word(selection.last, word_start, word_end);
 			if (extend_selection) {
 				selection.last = word_start;
 			}
@@ -466,7 +484,7 @@ public:
 	void move_to_end_of_word(bool extend_selection = false) {
 		for (Selection& selection: selections) {
 			std::size_t word_start, word_end;
-			language->get_next_word(buffer, selection.last, word_start, word_end);
+			get_next_word(selection.last, word_start, word_end);
 			if (extend_selection) {
 				selection.last = word_end;
 			}
@@ -543,7 +561,7 @@ public:
 				}
 				else {
 					Selection& selection = selections[newlines];
-					language->invalidate(selection.last);
+					cache.invalidate(selection.last);
 					buffer.insert(selection.last, *c);
 					selection += 1;
 					++offset;
