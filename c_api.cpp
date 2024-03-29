@@ -25,17 +25,17 @@ template <class T> static void write(JSONWriter& writer, const std::vector<T>& a
 		}
 	});
 }
+static void write(JSONWriter& writer, const Range& range) {
+	writer.write_array([&](JSONArrayWriter& writer) {
+		writer.write_element().write_number(range.start);
+		writer.write_element().write_number(range.end);
+	});
+}
 static void write(JSONWriter& writer, const Span& span) {
 	writer.write_array([&](JSONArrayWriter& writer) {
 		writer.write_element().write_number(span.start);
 		writer.write_element().write_number(span.end);
 		writer.write_element().write_number(span.style - Style::DEFAULT);
-	});
-}
-static void write(JSONWriter& writer, const Selection& selection) {
-	writer.write_array([&](JSONArrayWriter& writer) {
-		writer.write_element().write_number(selection.first);
-		writer.write_element().write_number(selection.last);
 	});
 }
 static void write(JSONWriter& writer, const RenderedLine& line) {

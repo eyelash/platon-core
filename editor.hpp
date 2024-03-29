@@ -129,7 +129,7 @@ struct Selection {
 	std::size_t max() const {
 		return std::max(first, last);
 	}
-	bool is_reversed() const {
+	constexpr bool is_reversed() const {
 		return first > last;
 	}
 };
@@ -162,7 +162,7 @@ struct RenderedLine {
 	std::string text;
 	std::size_t number;
 	std::vector<Span> spans;
-	std::vector<Selection> selections;
+	std::vector<Range> selections;
 	std::vector<std::size_t> cursors;
 };
 
@@ -177,7 +177,7 @@ class Editor {
 			return;
 		}
 		for (const Span& span: prism::highlight(language, &buffer, cache, index0, index1)) {
-			spans.push_back({span.start - index0, span.end - index0, span.style});
+			spans.emplace_back(span.start - index0, span.end - index0, span.style);
 		}
 	}
 	void get_word(std::size_t index, std::size_t& word_start, std::size_t& word_end) const {
