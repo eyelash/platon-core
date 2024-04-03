@@ -173,13 +173,13 @@ public:
 		I info;
 	};
 	struct Leaf: Node {
-		static constexpr std::size_t SIZE = 128;
+		static constexpr std::size_t SIZE = I::LEAF_SIZE;
 		StaticVector<T, SIZE> children;
 		Leaf* previous_leaf = nullptr;
 		Leaf* next_leaf = nullptr;
 	};
 	struct INode: Node {
-		static constexpr std::size_t SIZE = 16;
+		static constexpr std::size_t SIZE = I::INODE_SIZE;
 		StaticVector<Node*, SIZE> children;
 	};
 

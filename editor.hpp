@@ -9,6 +9,9 @@
 class TextBuffer final: public Input {
 	struct Info {
 		using T = char;
+		// these sizes are tuned for a node size of 128 bytes
+		static constexpr std::size_t LEAF_SIZE = 80;
+		static constexpr std::size_t INODE_SIZE = 12;
 		std::size_t chars;
 		std::size_t codepoints;
 		std::size_t newlines;
