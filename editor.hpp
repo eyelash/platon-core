@@ -109,28 +109,28 @@ public:
 };
 
 struct Selection {
-	std::size_t first;
-	std::size_t last;
-	constexpr Selection(std::size_t first): first(first), last(first) {}
-	constexpr Selection(std::size_t first, std::size_t last): first(first), last(last) {}
+	std::size_t tail;
+	std::size_t head;
+	constexpr Selection(std::size_t head): tail(head), head(head) {}
+	constexpr Selection(std::size_t tail, std::size_t head): tail(tail), head(head) {}
 	Selection& operator +=(std::size_t n) {
-		first += n;
-		last += n;
+		tail += n;
+		head += n;
 		return *this;
 	}
 	Selection& operator -=(std::size_t n) {
-		first -= n;
-		last -= n;
+		tail -= n;
+		head -= n;
 		return *this;
 	}
 	std::size_t min() const {
-		return std::min(first, last);
+		return std::min(tail, head);
 	}
 	std::size_t max() const {
-		return std::max(first, last);
+		return std::max(tail, head);
 	}
 	constexpr bool is_reversed() const {
-		return first > last;
+		return tail > head;
 	}
 };
 
@@ -196,8 +196,8 @@ class Editor {
 			}
 		}
 		for (const Selection& selection: selections) {
-			if (selection.last >= index0 && selection.last < index1) {
-				line.cursors.emplace_back(selection.last - index0);
+			if (selection.head >= index0 && selection.head < index1) {
+				line.cursors.emplace_back(selection.head - index0);
 			}
 		}
 	}
@@ -220,7 +220,7 @@ class Editor {
 		std::size_t offset = 0;
 		for (Selection& selection: selections) {
 			selection -= offset;
-			if (selection.first != selection.last) {
+			if (selection.tail != selection.head) {
 				cache.invalidate(selection.min());
 				for (std::size_t i = selection.min(); i < selection.max(); ++i) {
 					buffer.remove(selection.min());
@@ -232,7 +232,7 @@ class Editor {
 	}
 	void collapse_selections(bool reverse_direction) {
 		for (std::size_t i = 1; i < selections.size(); ++i) {
-			if (selections[i-1].last == selections[i].last || selections[i-1].max() > selections[i].min()) {
+			if (selections[i-1].head == selections[i].head || selections[i-1].max() > selections[i].min()) {
 				if (reverse_direction) {
 					selections[i-1] = Selection(selections[i].max(), selections[i-1].min());
 				}
@@ -275,9 +275,9 @@ public:
 		std::size_t offset = 0;
 		for (Selection& selection: selections) {
 			selection += offset;
-			cache.invalidate(selection.last);
+			cache.invalidate(selection.head);
 			for (const char* c = text; *c; ++c) {
-				buffer.insert(selection.last, *c);
+				buffer.insert(selection.head, *c);
 				selection += 1;
 				++offset;
 			}
@@ -288,13 +288,13 @@ public:
 		std::size_t offset = 0;
 		for (Selection& selection: selections) {
 			selection += offset;
-			cache.invalidate(selection.last);
-			buffer.insert(selection.last, '\n');
+			cache.invalidate(selection.head);
+			buffer.insert(selection.head, '\n');
 			selection += 1;
 			++offset;
-			auto i = buffer.get_iterator(buffer.get_index(buffer.get_line(selection.last) - 1));
+			auto i = buffer.get_iterator(buffer.get_index(buffer.get_line(selection.head) - 1));
 			while (i != buffer.end() && (*i == ' ' || *i == '\t')) {
-				buffer.insert(selection.last, *i);
+				buffer.insert(selection.head, *i);
 				selection += 1;
 				++offset;
 				++i;
@@ -305,8 +305,8 @@ public:
 		std::size_t offset = 0;
 		for (Selection& selection: selections) {
 			selection -= offset;
-			if (selection.first == selection.last && selection.last > 0) {
-				selection.last = get_previous_index(selection.last);
+			if (selection.head == selection.tail && selection.head > 0) {
+				selection.head = get_previous_index(selection.head);
 			}
 			cache.invalidate(selection.min());
 			for (std::size_t i = selection.min(); i < selection.max(); ++i) {
@@ -322,8 +322,8 @@ public:
 		std::size_t offset = 0;
 		for (Selection& selection: selections) {
 			selection -= offset;
-			if (selection.first == selection.last && selection.last < last) {
-				selection.last = get_next_index(selection.last);
+			if (selection.head == selection.tail && selection.head < last) {
+				selection.head = get_next_index(selection.head);
 			}
 			cache.invalidate(selection.min());
 			for (std::size_t i = selection.min(); i < selection.max(); ++i) {
@@ -368,20 +368,20 @@ public:
 	}
 	void extend_selection(std::size_t column, std::size_t line) {
 		Selection& selection = selections[last_selection];
-		selection.last = get_index(column, line);
+		selection.head = get_index(column, line);
 		collapse_selections(selection.is_reversed());
 	}
 	void move_left(bool extend_selection = false) {
 		for (Selection& selection: selections) {
 			if (extend_selection) {
-				if (selection.last > 0) {
-					selection.last = get_previous_index(selection.last);
+				if (selection.head > 0) {
+					selection.head = get_previous_index(selection.head);
 				}
 			}
 			else {
-				if (selection.first == selection.last) {
-					if (selection.last > 0) {
-						selection = get_previous_index(selection.last);
+				if (selection.head == selection.tail) {
+					if (selection.head > 0) {
+						selection = get_previous_index(selection.head);
 					}
 				}
 				else {
@@ -395,14 +395,14 @@ public:
 		const std::size_t last = buffer.get_size() - 1;
 		for (Selection& selection: selections) {
 			if (extend_selection) {
-				if (selection.last < last) {
-					selection.last = get_next_index(selection.last);
+				if (selection.head < last) {
+					selection.head = get_next_index(selection.head);
 				}
 			}
 			else {
-				if (selection.first == selection.last) {
-					if (selection.last < last) {
-						selection = get_next_index(selection.last);
+				if (selection.head == selection.tail) {
+					if (selection.head < last) {
+						selection = get_next_index(selection.head);
 					}
 				}
 				else {
@@ -420,15 +420,15 @@ public:
 	}
 	void move_up(bool extend_selection = false) {
 		for (Selection& selection: selections) {
-			std::size_t line = buffer.get_line(selection.last);
-			std::size_t column = buffer.get_codepoints_for_index(selection.last) - buffer.get_codepoints_for_index(buffer.get_index(line));
+			std::size_t line = buffer.get_line(selection.head);
+			std::size_t column = buffer.get_codepoints_for_index(selection.head) - buffer.get_codepoints_for_index(buffer.get_index(line));
 			if (extend_selection) {
 				if (line > 0) {
-					selection.last = get_index2(column, line - 1);
+					selection.head = get_index2(column, line - 1);
 				}
 			}
 			else {
-				if (selection.first == selection.last) {
+				if (selection.head == selection.tail) {
 					if (line > 0) {
 						selection = get_index2(column, line - 1);
 					}
@@ -443,15 +443,15 @@ public:
 	void move_down(bool extend_selection = false) {
 		const std::size_t last_line = get_total_lines() - 1;
 		for (Selection& selection: selections) {
-			std::size_t line = buffer.get_line(selection.last);
-			std::size_t column = buffer.get_codepoints_for_index(selection.last) - buffer.get_codepoints_for_index(buffer.get_index(line));
+			std::size_t line = buffer.get_line(selection.head);
+			std::size_t column = buffer.get_codepoints_for_index(selection.head) - buffer.get_codepoints_for_index(buffer.get_index(line));
 			if (extend_selection) {
 				if (line < last_line) {
-					selection.last = get_index2(column, line + 1);
+					selection.head = get_index2(column, line + 1);
 				}
 			}
 			else {
-				if (selection.first == selection.last) {
+				if (selection.head == selection.tail) {
 					if (line < last_line) {
 						selection = get_index2(column, line + 1);
 					}
@@ -466,12 +466,12 @@ public:
 	void move_to_beginning_of_word(bool extend_selection = false) {
 		for (Selection& selection: selections) {
 			std::size_t word_start, word_end;
-			get_previous_word(selection.last, word_start, word_end);
+			get_previous_word(selection.head, word_start, word_end);
 			if (extend_selection) {
-				selection.last = word_start;
+				selection.head = word_start;
 			}
 			else {
-				if (selection.first == selection.last) {
+				if (selection.head == selection.tail) {
 					selection = word_start;
 				}
 				else {
@@ -484,12 +484,12 @@ public:
 	void move_to_end_of_word(bool extend_selection = false) {
 		for (Selection& selection: selections) {
 			std::size_t word_start, word_end;
-			get_next_word(selection.last, word_start, word_end);
+			get_next_word(selection.head, word_start, word_end);
 			if (extend_selection) {
-				selection.last = word_end;
+				selection.head = word_end;
 			}
 			else {
-				if (selection.first == selection.last) {
+				if (selection.head == selection.tail) {
 					selection = word_end;
 				}
 				else {
@@ -501,18 +501,18 @@ public:
 	}
 	void move_to_beginning_of_line(bool extend_selection = false) {
 		for (Selection& selection: selections) {
-			selection.last = buffer.get_index(buffer.get_line(selection.last));
+			selection.head = buffer.get_index(buffer.get_line(selection.head));
 			if (!extend_selection) {
-				selection.first = selection.last;
+				selection.tail = selection.head;
 			}
 		}
 		collapse_selections(true);
 	}
 	void move_to_end_of_line(bool extend_selection = false) {
 		for (Selection& selection: selections) {
-			selection.last = buffer.get_index(buffer.get_line(selection.last) + 1) - 1;
+			selection.head = buffer.get_index(buffer.get_line(selection.head) + 1) - 1;
 			if (!extend_selection) {
-				selection.first = selection.last;
+				selection.tail = selection.head;
 			}
 		}
 		collapse_selections(false);
@@ -561,8 +561,8 @@ public:
 				}
 				else {
 					Selection& selection = selections[newlines];
-					cache.invalidate(selection.last);
-					buffer.insert(selection.last, *c);
+					cache.invalidate(selection.head);
+					buffer.insert(selection.head, *c);
 					selection += 1;
 					++offset;
 				}
