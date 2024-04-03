@@ -123,14 +123,17 @@ struct Selection {
 		head -= n;
 		return *this;
 	}
-	std::size_t min() const {
-		return std::min(tail, head);
-	}
-	std::size_t max() const {
-		return std::max(tail, head);
+	constexpr bool is_empty() const {
+		return tail == head;
 	}
 	constexpr bool is_reversed() const {
 		return tail > head;
+	}
+	constexpr std::size_t min() const {
+		return is_reversed() ? head : tail;
+	}
+	constexpr std::size_t max() const {
+		return is_reversed() ? tail : head;
 	}
 };
 
@@ -220,7 +223,7 @@ class Editor {
 		std::size_t offset = 0;
 		for (Selection& selection: selections) {
 			selection -= offset;
-			if (selection.tail != selection.head) {
+			if (!selection.is_empty()) {
 				cache.invalidate(selection.min());
 				for (std::size_t i = selection.min(); i < selection.max(); ++i) {
 					buffer.remove(selection.min());
@@ -305,7 +308,7 @@ public:
 		std::size_t offset = 0;
 		for (Selection& selection: selections) {
 			selection -= offset;
-			if (selection.head == selection.tail && selection.head > 0) {
+			if (selection.is_empty() && selection.head > 0) {
 				selection.head = get_previous_index(selection.head);
 			}
 			cache.invalidate(selection.min());
@@ -322,7 +325,7 @@ public:
 		std::size_t offset = 0;
 		for (Selection& selection: selections) {
 			selection -= offset;
-			if (selection.head == selection.tail && selection.head < last) {
+			if (selection.is_empty() && selection.head < last) {
 				selection.head = get_next_index(selection.head);
 			}
 			cache.invalidate(selection.min());
@@ -379,7 +382,7 @@ public:
 				}
 			}
 			else {
-				if (selection.head == selection.tail) {
+				if (selection.is_empty()) {
 					if (selection.head > 0) {
 						selection = get_previous_index(selection.head);
 					}
@@ -400,7 +403,7 @@ public:
 				}
 			}
 			else {
-				if (selection.head == selection.tail) {
+				if (selection.is_empty()) {
 					if (selection.head < last) {
 						selection = get_next_index(selection.head);
 					}
@@ -428,7 +431,7 @@ public:
 				}
 			}
 			else {
-				if (selection.head == selection.tail) {
+				if (selection.is_empty()) {
 					if (line > 0) {
 						selection = get_index2(column, line - 1);
 					}
@@ -451,7 +454,7 @@ public:
 				}
 			}
 			else {
-				if (selection.head == selection.tail) {
+				if (selection.is_empty()) {
 					if (line < last_line) {
 						selection = get_index2(column, line + 1);
 					}
@@ -471,7 +474,7 @@ public:
 				selection.head = word_start;
 			}
 			else {
-				if (selection.head == selection.tail) {
+				if (selection.is_empty()) {
 					selection = word_start;
 				}
 				else {
@@ -489,7 +492,7 @@ public:
 				selection.head = word_end;
 			}
 			else {
-				if (selection.head == selection.tail) {
+				if (selection.is_empty()) {
 					selection = word_end;
 				}
 				else {
