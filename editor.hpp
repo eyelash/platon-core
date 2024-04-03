@@ -217,10 +217,38 @@ class Editor {
 		return file_name;
 	}
 	std::size_t get_previous_index(std::size_t index) const {
-		return buffer.get_info_for_codepoints(buffer.get_info_for_index(index).codepoints - 1).chars;
+		if (index == 0) {
+			return 0;
+		}
+		const std::size_t codepoints = buffer.get_info_for_index(index).codepoints - 1;
+		return buffer.get_info_for_codepoints(codepoints).chars;
 	}
 	std::size_t get_next_index(std::size_t index) const {
-		return buffer.get_info_for_codepoints(buffer.get_info_for_index(index).codepoints + 1).chars;
+		if (index == buffer.get_size() - 1) {
+			return index;
+		}
+		const std::size_t codepoints = buffer.get_info_for_index(index).codepoints + 1;
+		return buffer.get_info_for_codepoints(codepoints).chars;
+	}
+	std::size_t get_index_above(std::size_t index) const {
+		const std::size_t line = buffer.get_info_for_index(index).newlines;
+		if (line == 0) {
+			return 0;
+		}
+		const std::size_t column = buffer.get_info_for_index(index).codepoints - buffer.get_info_for_line_start(line).codepoints;
+		const std::size_t codepoints = buffer.get_info_for_line_start(line - 1).codepoints + column;
+		const std::size_t max_codepoints = buffer.get_info_for_line_end(line - 1).codepoints;
+		return buffer.get_info_for_codepoints(std::min(codepoints, max_codepoints)).chars;
+	}
+	std::size_t get_index_below(std::size_t index) const {
+		const std::size_t line = buffer.get_info_for_index(index).newlines;
+		if (line == buffer.get_total_lines() - 1) {
+			return buffer.get_size() - 1;
+		}
+		const std::size_t column = buffer.get_info_for_index(index).codepoints - buffer.get_info_for_line_start(line).codepoints;
+		const std::size_t codepoints = buffer.get_info_for_line_start(line + 1).codepoints + column;
+		const std::size_t max_codepoints = buffer.get_info_for_line_end(line + 1).codepoints;
+		return buffer.get_info_for_codepoints(std::min(codepoints, max_codepoints)).chars;
 	}
 	void delete_selections() {
 		std::size_t offset = 0;
@@ -381,15 +409,11 @@ public:
 	void move_left(bool extend_selection = false) {
 		for (Selection& selection: selections) {
 			if (extend_selection) {
-				if (selection.head > 0) {
-					selection.head = get_previous_index(selection.head);
-				}
+				selection.head = get_previous_index(selection.head);
 			}
 			else {
 				if (selection.is_empty()) {
-					if (selection.head > 0) {
-						selection = get_previous_index(selection.head);
-					}
+					selection = get_previous_index(selection.head);
 				}
 				else {
 					selection = selection.min();
@@ -399,18 +423,13 @@ public:
 		collapse_selections(true);
 	}
 	void move_right(bool extend_selection = false) {
-		const std::size_t last = buffer.get_size() - 1;
 		for (Selection& selection: selections) {
 			if (extend_selection) {
-				if (selection.head < last) {
-					selection.head = get_next_index(selection.head);
-				}
+				selection.head = get_next_index(selection.head);
 			}
 			else {
 				if (selection.is_empty()) {
-					if (selection.head < last) {
-						selection = get_next_index(selection.head);
-					}
+					selection = get_next_index(selection.head);
 				}
 				else {
 					selection = selection.max();
@@ -419,26 +438,14 @@ public:
 		}
 		collapse_selections(false);
 	}
-	std::size_t get_index2(std::size_t column, std::size_t line) const {
-		// the column is measured in codepoints
-		std::size_t codepoints = buffer.get_info_for_line_start(line).codepoints + column;
-		std::size_t max_codepoints = buffer.get_info_for_index(buffer.get_index(line + 1) - 1).codepoints;
-		return buffer.get_info_for_codepoints(std::min(codepoints, max_codepoints)).chars;
-	}
 	void move_up(bool extend_selection = false) {
 		for (Selection& selection: selections) {
-			std::size_t line = buffer.get_line(selection.head);
-			std::size_t column = buffer.get_info_for_index(selection.head).codepoints - buffer.get_info_for_line_start(line).codepoints;
 			if (extend_selection) {
-				if (line > 0) {
-					selection.head = get_index2(column, line - 1);
-				}
+				selection.head = get_index_above(selection.head);
 			}
 			else {
 				if (selection.is_empty()) {
-					if (line > 0) {
-						selection = get_index2(column, line - 1);
-					}
+					selection = get_index_above(selection.head);
 				}
 				else {
 					selection = selection.min();
@@ -448,20 +455,13 @@ public:
 		collapse_selections(true);
 	}
 	void move_down(bool extend_selection = false) {
-		const std::size_t last_line = get_total_lines() - 1;
 		for (Selection& selection: selections) {
-			std::size_t line = buffer.get_line(selection.head);
-			std::size_t column = buffer.get_info_for_index(selection.head).codepoints - buffer.get_info_for_line_start(line).codepoints;
 			if (extend_selection) {
-				if (line < last_line) {
-					selection.head = get_index2(column, line + 1);
-				}
+				selection.head = get_index_below(selection.head);
 			}
 			else {
 				if (selection.is_empty()) {
-					if (line < last_line) {
-						selection = get_index2(column, line + 1);
-					}
+					selection = get_index_below(selection.head);
 				}
 				else {
 					selection = selection.max();
