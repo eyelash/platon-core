@@ -14,9 +14,20 @@ public:
 		string.push_back('"');
 		for (; first != last; ++first) {
 			const char c = *first;
-			if (c == '"' || c == '\\')
+			if (c == '\n') {
 				string.push_back('\\');
-			string.push_back(c);
+				string.push_back('n');
+			}
+			else if (c == '\t') {
+				string.push_back('\\');
+				string.push_back('t');
+			}
+			else {
+				if (c == '"' || c == '\\') {
+					string.push_back('\\');
+				}
+				string.push_back(c);
+			}
 		}
 		string.push_back('"');
 	}
