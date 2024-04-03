@@ -55,23 +55,26 @@ public:
 			tree.insert(tree_end(), '\n');
 		}
 	}
+	Info get_info() const {
+		return tree.get_info();
+	}
+	Info get_info_for_index(std::size_t index) const {
+		return tree.get_sum(CharComp(index));
+	}
+	Info get_info_for_codepoints(std::size_t codepoints) const {
+		return tree.get_sum(CodepointComp(codepoints));
+	}
+	Info get_info_for_line_start(std::size_t line) const {
+		return line == 0 ? Info() : tree.get_sum(LineComp(line - 1)) + Info('\n');
+	}
+	Info get_info_for_line_end(std::size_t line) const {
+		return tree.get_sum(LineComp(line));
+	}
 	std::size_t get_size() const {
-		return tree.get_info().chars;
+		return get_info().chars;
 	}
 	std::size_t get_total_lines() const {
-		return tree.get_info().newlines;
-	}
-	std::size_t get_index(std::size_t line) const {
-		return line == 0 ? 0 : tree.get_sum(LineComp(line - 1)).chars + 1;
-	}
-	std::size_t get_line(std::size_t index) const {
-		return tree.get_sum(CharComp(index)).newlines;
-	}
-	std::size_t get_codepoints_for_index(std::size_t index) const {
-		return tree.get_sum(CharComp(index)).codepoints;
-	}
-	std::size_t get_index_for_codepoints(std::size_t codepoints) const {
-		return tree.get_sum(CodepointComp(codepoints)).chars;
+		return get_info().newlines;
 	}
 	void insert(std::size_t index, char c) {
 		tree.insert(CharComp(index), c);
@@ -214,10 +217,10 @@ class Editor {
 		return file_name;
 	}
 	std::size_t get_previous_index(std::size_t index) const {
-		return buffer.get_index_for_codepoints(buffer.get_codepoints_for_index(index) - 1);
+		return buffer.get_info_for_codepoints(buffer.get_info_for_index(index).codepoints - 1).chars;
 	}
 	std::size_t get_next_index(std::size_t index) const {
-		return buffer.get_index_for_codepoints(buffer.get_codepoints_for_index(index) + 1);
+		return buffer.get_info_for_codepoints(buffer.get_info_for_index(index).codepoints + 1).chars;
 	}
 	void delete_selections() {
 		std::size_t offset = 0;
@@ -263,8 +266,8 @@ public:
 			std::size_t index0 = 0;
 			std::size_t index1 = 0;
 			if (i < get_total_lines()) {
-				index0 = buffer.get_index(i);
-				index1 = buffer.get_index(i + 1);
+				index0 = buffer.get_info_for_line_start(i).chars;
+				index1 = buffer.get_info_for_line_start(i + 1).chars;
 			}
 			line.text = std::string(buffer.get_iterator(index0), buffer.get_iterator(index1));
 			line.number = i + 1;
@@ -295,7 +298,9 @@ public:
 			buffer.insert(selection.head, '\n');
 			selection += 1;
 			++offset;
-			auto i = buffer.get_iterator(buffer.get_index(buffer.get_line(selection.head) - 1));
+			const std::size_t line = buffer.get_info_for_index(selection.head - 1).newlines;
+			const std::size_t index = buffer.get_info_for_line_start(line).chars;
+			auto i = buffer.get_iterator(index);
 			while (i != buffer.end() && (*i == ' ' || *i == '\t')) {
 				buffer.insert(selection.head, *i);
 				selection += 1;
@@ -342,10 +347,9 @@ public:
 		if (line > get_total_lines() - 1) {
 			return buffer.get_size() - 1;
 		}
-		else {
-			std::size_t index = buffer.get_index(line) + column;
-			return std::min(index, buffer.get_index(line + 1) - 1);
-		}
+		const std::size_t index = buffer.get_info_for_line_start(line).chars + column;
+		const std::size_t max_index = buffer.get_info_for_line_end(line).chars;
+		return std::min(index, max_index);
 	}
 	void set_cursor(std::size_t column, std::size_t line) {
 		selections.clear();
@@ -417,14 +421,14 @@ public:
 	}
 	std::size_t get_index2(std::size_t column, std::size_t line) const {
 		// the column is measured in codepoints
-		std::size_t codepoints = buffer.get_codepoints_for_index(buffer.get_index(line)) + column;
-		std::size_t max_codepoints = buffer.get_codepoints_for_index(buffer.get_index(line + 1) - 1);
-		return buffer.get_index_for_codepoints(std::min(codepoints, max_codepoints));
+		std::size_t codepoints = buffer.get_info_for_line_start(line).codepoints + column;
+		std::size_t max_codepoints = buffer.get_info_for_index(buffer.get_index(line + 1) - 1).codepoints;
+		return buffer.get_info_for_codepoints(std::min(codepoints, max_codepoints)).chars;
 	}
 	void move_up(bool extend_selection = false) {
 		for (Selection& selection: selections) {
 			std::size_t line = buffer.get_line(selection.head);
-			std::size_t column = buffer.get_codepoints_for_index(selection.head) - buffer.get_codepoints_for_index(buffer.get_index(line));
+			std::size_t column = buffer.get_info_for_index(selection.head).codepoints - buffer.get_info_for_line_start(line).codepoints;
 			if (extend_selection) {
 				if (line > 0) {
 					selection.head = get_index2(column, line - 1);
@@ -447,7 +451,7 @@ public:
 		const std::size_t last_line = get_total_lines() - 1;
 		for (Selection& selection: selections) {
 			std::size_t line = buffer.get_line(selection.head);
-			std::size_t column = buffer.get_codepoints_for_index(selection.head) - buffer.get_codepoints_for_index(buffer.get_index(line));
+			std::size_t column = buffer.get_info_for_index(selection.head).codepoints - buffer.get_info_for_line_start(line).codepoints;
 			if (extend_selection) {
 				if (line < last_line) {
 					selection.head = get_index2(column, line + 1);
@@ -504,7 +508,8 @@ public:
 	}
 	void move_to_beginning_of_line(bool extend_selection = false) {
 		for (Selection& selection: selections) {
-			selection.head = buffer.get_index(buffer.get_line(selection.head));
+			const std::size_t line = buffer.get_info_for_index(selection.head).newlines;
+			selection.head = buffer.get_info_for_line_start(line).chars;
 			if (!extend_selection) {
 				selection.tail = selection.head;
 			}
@@ -513,7 +518,8 @@ public:
 	}
 	void move_to_end_of_line(bool extend_selection = false) {
 		for (Selection& selection: selections) {
-			selection.head = buffer.get_index(buffer.get_line(selection.head) + 1) - 1;
+			const std::size_t line = buffer.get_info_for_index(selection.head).newlines;
+			selection.head = buffer.get_info_for_line_end(line).chars;
 			if (!extend_selection) {
 				selection.tail = selection.head;
 			}
