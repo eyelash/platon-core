@@ -290,20 +290,28 @@ public:
 	std::size_t get_total_lines() const {
 		return buffer.get_total_lines();
 	}
+	void render(RenderedLine& line, std::size_t i) const {
+		std::size_t index0 = 0;
+		std::size_t index1 = 0;
+		if (i < get_total_lines()) {
+			index0 = buffer.get_info_for_line_start(i).bytes;
+			index1 = buffer.get_info_for_line_start(i + 1).bytes;
+		}
+		line.text = std::string(buffer.get_iterator(index0), buffer.get_iterator(index1));
+		line.number = i + 1;
+		highlight(line.spans, index0, index1);
+		render_selections(line, index0, index1);
+	}
+	RenderedLine render(std::size_t i) const {
+		RenderedLine line;
+		render(line, i);
+		return line;
+	}
 	std::vector<RenderedLine> render(std::size_t first_line, std::size_t last_line) const {
 		std::vector<RenderedLine> lines;
 		for (std::size_t i = first_line; i < last_line; ++i) {
 			RenderedLine& line = lines.emplace_back();
-			std::size_t index0 = 0;
-			std::size_t index1 = 0;
-			if (i < get_total_lines()) {
-				index0 = buffer.get_info_for_line_start(i).bytes;
-				index1 = buffer.get_info_for_line_start(i + 1).bytes;
-			}
-			line.text = std::string(buffer.get_iterator(index0), buffer.get_iterator(index1));
-			line.number = i + 1;
-			highlight(line.spans, index0, index1);
-			render_selections(line, index0, index1);
+			render(line, i);
 		}
 		return lines;
 	}
