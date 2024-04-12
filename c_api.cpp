@@ -35,7 +35,7 @@ static void write(JSONWriter& writer, const Span& span) {
 	writer.write_array([&](JSONArrayWriter& writer) {
 		writer.write_element().write_number(span.start);
 		writer.write_element().write_number(span.end);
-		writer.write_element().write_number(span.style - Style::DEFAULT);
+		writer.write_element().write_number(span.style);
 	});
 }
 static void write(JSONWriter& writer, const RenderedLine& line) {
@@ -68,10 +68,8 @@ static void write(JSONWriter& writer, const Theme& theme) {
 		write(writer.write_member("background_active"), theme.background_active);
 		write(writer.write_member("selection"), theme.selection);
 		write(writer.write_member("cursor"), theme.cursor);
-		write(writer.write_member("number_background"), theme.number_background);
-		write(writer.write_member("number_background_active"), theme.number_background_active);
-		write(writer.write_member("number"), theme.number);
-		write(writer.write_member("number_active"), theme.number_active);
+		write(writer.write_member("gutter_background"), theme.gutter_background);
+		write(writer.write_member("gutter_background_active"), theme.gutter_background_active);
 		write(writer.write_member("styles"), theme.styles);
 	});
 }
