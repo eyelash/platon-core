@@ -148,23 +148,6 @@ public:
 	Selections() {
 		emplace_back(0);
 	}
-	bool find_selection(std::size_t cursor, std::size_t& index) const {
-		std::size_t i;
-		for (i = 0; i < size(); ++i) {
-			const Selection& selection = operator [](i);
-			if (selection.max() >= cursor) {
-				if (selection.min() <= cursor) {
-					index = i;
-					return true;
-				}
-				else {
-					break;
-				}
-			}
-		}
-		index = i;
-		return false;
-	}
 };
 
 struct RenderedLine {
@@ -395,10 +378,27 @@ public:
 		selections.emplace_back(get_index(column, line));
 		last_selection = 0;
 	}
+	bool find_selection(std::size_t cursor, std::size_t& index) const {
+		std::size_t i;
+		for (i = 0; i < selections.size(); ++i) {
+			const Selection& selection = selections[i];
+			if (selection.max() >= cursor) {
+				if (selection.min() <= cursor) {
+					index = i;
+					return true;
+				}
+				else {
+					break;
+				}
+			}
+		}
+		index = i;
+		return false;
+	}
 	void toggle_cursor(std::size_t column, std::size_t line) {
 		const std::size_t cursor = get_index(column, line);
 		std::size_t index;
-		if (selections.find_selection(cursor, index)) {
+		if (find_selection(cursor, index)) {
 			selections.erase(selections.begin() + index);
 			if (last_selection == index) {
 				last_selection = selections.size() - 1;
@@ -419,100 +419,82 @@ public:
 	}
 	void move_left(bool extend_selection = false) {
 		for (Selection& selection: selections) {
-			if (extend_selection) {
-				selection.head = get_previous_index(selection.head);
+			if (!extend_selection && !selection.is_empty()) {
+				selection = selection.min();
+				continue;
 			}
-			else {
-				if (selection.is_empty()) {
-					selection = get_previous_index(selection.head);
-				}
-				else {
-					selection = selection.min();
-				}
+			selection.head = get_previous_index(selection.head);
+			if (!extend_selection) {
+				selection.tail = selection.head;
 			}
 		}
 		collapse_selections(true);
 	}
 	void move_right(bool extend_selection = false) {
 		for (Selection& selection: selections) {
-			if (extend_selection) {
-				selection.head = get_next_index(selection.head);
+			if (!extend_selection && !selection.is_empty()) {
+				selection = selection.max();
+				continue;
 			}
-			else {
-				if (selection.is_empty()) {
-					selection = get_next_index(selection.head);
-				}
-				else {
-					selection = selection.max();
-				}
+			selection.head = get_next_index(selection.head);
+			if (!extend_selection) {
+				selection.tail = selection.head;
 			}
 		}
 		collapse_selections(false);
 	}
 	void move_up(bool extend_selection = false) {
 		for (Selection& selection: selections) {
-			if (extend_selection) {
-				selection.head = get_index_above(selection.head);
+			if (!extend_selection && !selection.is_empty()) {
+				selection = selection.min();
+				continue;
 			}
-			else {
-				if (selection.is_empty()) {
-					selection = get_index_above(selection.head);
-				}
-				else {
-					selection = selection.min();
-				}
+			selection.head = get_index_above(selection.head);
+			if (!extend_selection) {
+				selection.tail = selection.head;
 			}
 		}
 		collapse_selections(true);
 	}
 	void move_down(bool extend_selection = false) {
 		for (Selection& selection: selections) {
-			if (extend_selection) {
-				selection.head = get_index_below(selection.head);
+			if (!extend_selection && !selection.is_empty()) {
+				selection = selection.max();
+				continue;
 			}
-			else {
-				if (selection.is_empty()) {
-					selection = get_index_below(selection.head);
-				}
-				else {
-					selection = selection.max();
-				}
+			selection.head = get_index_below(selection.head);
+			if (!extend_selection) {
+				selection.tail = selection.head;
 			}
 		}
 		collapse_selections(false);
 	}
 	void move_to_beginning_of_word(bool extend_selection = false) {
 		for (Selection& selection: selections) {
+			if (!extend_selection && !selection.is_empty()) {
+				selection = selection.min();
+				continue;
+			}
 			std::size_t word_start, word_end;
 			get_previous_word(selection.head, word_start, word_end);
-			if (extend_selection) {
-				selection.head = word_start;
-			}
-			else {
-				if (selection.is_empty()) {
-					selection = word_start;
-				}
-				else {
-					selection = selection.min();
-				}
+			selection.head = word_start;
+			if (!extend_selection) {
+				selection.tail = selection.head;
 			}
 		}
 		collapse_selections(true);
 	}
 	void move_to_end_of_word(bool extend_selection = false) {
 		for (Selection& selection: selections) {
+			if (!extend_selection && !selection.is_empty()) {
+				selection = selection.max();
+				continue;
+			}
 			std::size_t word_start, word_end;
 			get_next_word(selection.head, word_start, word_end);
-			if (extend_selection) {
-				selection.head = word_end;
-			}
-			else {
-				if (selection.is_empty()) {
-					selection = word_end;
-				}
-				else {
-					selection = selection.max();
-				}
+			selection.head = word_end;
+			if (!extend_selection) {
+				selection.tail = selection.head;
 			}
 		}
 		collapse_selections(false);
