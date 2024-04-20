@@ -545,9 +545,8 @@ public:
 	const Theme& get_theme() const {
 		return prism::get_theme("one-dark");
 	}
-	const char* copy() const {
-		static std::string string;
-		string.clear();
+	std::string copy() const {
+		std::string string;
 		auto i = selections.begin();
 		if (i != selections.end()) {
 			string.append(buffer.get_iterator(i->min()), buffer.get_iterator(i->max()));
@@ -558,10 +557,10 @@ public:
 				++i;
 			}
 		}
-		return string.c_str();
+		return string;
 	}
-	const char* cut() {
-		const char* result = copy();
+	std::string cut() {
+		std::string result = copy();
 		delete_selections();
 		return result;
 	}

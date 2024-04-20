@@ -176,11 +176,15 @@ const char* platon_editor_get_theme(const PlatonEditor* editor) {
 }
 
 const char* platon_editor_copy(const PlatonEditor* editor) {
-	return editor->copy();
+	static std::string string;
+	string = editor->copy();
+	return string.c_str();
 }
 
 const char* platon_editor_cut(PlatonEditor* editor) {
-	return editor->cut();
+	static std::string string;
+	string = editor->cut();
+	return string.c_str();
 }
 
 void platon_editor_paste(PlatonEditor* editor, const char* text) {
