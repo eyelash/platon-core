@@ -335,7 +335,7 @@ public:
 		std::size_t offset = 0;
 		for (Selection& selection: selections) {
 			selection -= offset;
-			if (selection.is_empty() && selection.head > 0) {
+			if (selection.is_empty()) {
 				selection.head = get_previous_index(selection.head);
 			}
 			cache.invalidate(selection.min());
@@ -348,17 +348,15 @@ public:
 		collapse_selections(true);
 	}
 	void delete_forward() {
-		std::size_t last = buffer.get_size() - 1;
 		std::size_t offset = 0;
 		for (Selection& selection: selections) {
 			selection -= offset;
-			if (selection.is_empty() && selection.head < last) {
+			if (selection.is_empty()) {
 				selection.head = get_next_index(selection.head);
 			}
 			cache.invalidate(selection.min());
 			for (std::size_t i = selection.min(); i < selection.max(); ++i) {
 				buffer.remove(selection.min());
-				--last;
 				++offset;
 			}
 			selection = selection.min();
@@ -378,39 +376,31 @@ public:
 		selections.emplace_back(get_index(column, line));
 		last_selection = 0;
 	}
-	bool find_selection(std::size_t cursor, std::size_t& index) const {
+	void toggle_cursor(std::size_t column, std::size_t line) {
+		const std::size_t cursor = get_index(column, line);
 		std::size_t i;
 		for (i = 0; i < selections.size(); ++i) {
 			const Selection& selection = selections[i];
 			if (selection.max() >= cursor) {
 				if (selection.min() <= cursor) {
-					index = i;
-					return true;
+					const std::size_t index = i;
+					selections.erase(selections.begin() + index);
+					if (last_selection == index) {
+						last_selection = selections.size() - 1;
+					}
+					else if (last_selection > index) {
+						--last_selection;
+					}
+					return;
 				}
 				else {
 					break;
 				}
 			}
 		}
-		index = i;
-		return false;
-	}
-	void toggle_cursor(std::size_t column, std::size_t line) {
-		const std::size_t cursor = get_index(column, line);
-		std::size_t index;
-		if (find_selection(cursor, index)) {
-			selections.erase(selections.begin() + index);
-			if (last_selection == index) {
-				last_selection = selections.size() - 1;
-			}
-			else if (last_selection > index) {
-				--last_selection;
-			}
-		}
-		else {
-			selections.emplace(selections.begin() + index, cursor);
-			last_selection = index;
-		}
+		const std::size_t index = i;
+		selections.emplace(selections.begin() + index, cursor);
+		last_selection = index;
 	}
 	void extend_selection(std::size_t column, std::size_t line) {
 		Selection& selection = selections[last_selection];
