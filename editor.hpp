@@ -237,18 +237,9 @@ class Editor {
 		return buffer.get_info_for_codepoints(std::min(codepoints, max_codepoints)).bytes;
 	}
 	void delete_selections() {
-		std::size_t offset = 0;
-		for (Selection& selection: selections) {
-			selection -= offset;
-			if (!selection.is_empty()) {
-				cache.invalidate(selection.min());
-				for (std::size_t i = selection.min(); i < selection.max(); ++i) {
-					buffer.remove(selection.min());
-					++offset;
-				}
-				selection = selection.min();
-			}
-		}
+		for_each_selection([](SelectionIterator& selection) {
+			selection.delete_();
+		});
 	}
 	void collapse_selections(bool reverse_direction) {
 		for (std::size_t i = 1; i < selections.size(); ++i) {
@@ -267,6 +258,54 @@ class Editor {
 			}
 		}
 	}
+	class SelectionIterator {
+	public:
+		Editor* editor;
+		std::size_t insertion_offset = 0;
+		std::size_t deletion_offset = 0;
+		std::size_t i = 0;
+		constexpr SelectionIterator(Editor* editor): editor(editor) {}
+		constexpr bool operator <(std::size_t rhs) const {
+			return i < rhs;
+		}
+		Selection& operator *() const {
+			return editor->selections[i];
+		}
+		Selection* operator ->() const {
+			return &editor->selections[i];
+		}
+		SelectionIterator& operator ++() {
+			++i;
+			return *this;
+		}
+		void delete_() {
+			Selection& selection = editor->selections[i];
+			if (!selection.is_empty()) {
+				editor->cache.invalidate(selection.min());
+				for (std::size_t i = selection.min(); i < selection.max(); ++i) {
+					editor->buffer.remove(selection.min());
+					++deletion_offset;
+				}
+				selection = selection.min();
+			}
+		}
+		void insert(char c) {
+			Selection& selection = editor->selections[i];
+			editor->cache.invalidate(selection.head);
+			editor->buffer.insert(selection.head, c);
+			selection += 1;
+			++insertion_offset;
+		}
+		void insert(const char* text) {
+			Selection& selection = editor->selections[i];
+			editor->cache.invalidate(selection.head);
+			for (const char* c = text; *c; ++c) {
+				editor->buffer.insert(selection.head, *c);
+				selection += 1;
+				++insertion_offset;
+			}
+		}
+	};
 public:
 	Editor(): language(nullptr), last_selection(0) {}
 	Editor(const char* path): buffer(path), language(prism::get_language(get_file_name(path))), last_selection(0) {}
@@ -298,18 +337,18 @@ public:
 		}
 		return lines;
 	}
-	void insert_text(const char* text) {
-		delete_selections();
-		std::size_t offset = 0;
-		for (Selection& selection: selections) {
-			selection += offset;
-			cache.invalidate(selection.head);
-			for (const char* c = text; *c; ++c) {
-				buffer.insert(selection.head, *c);
-				selection += 1;
-				++offset;
-			}
+	template <class F> void for_each_selection(F&& f) {
+		for (SelectionIterator i(this); i < selections.size(); ++i) {
+			*i += i.insertion_offset;
+			*i -= i.deletion_offset;
+			std::forward<F>(f)(i);
 		}
+	}
+	void insert_text(const char* text) {
+		for_each_selection([&](SelectionIterator& selection) {
+			selection.delete_();
+			selection.insert(text);
+		});
 	}
 	void insert_newline() {
 		delete_selections();
@@ -332,35 +371,21 @@ public:
 		}
 	}
 	void delete_backward() {
-		std::size_t offset = 0;
-		for (Selection& selection: selections) {
-			selection -= offset;
-			if (selection.is_empty()) {
-				selection.head = get_previous_index(selection.head);
+		for_each_selection([&](SelectionIterator& selection) {
+			if (selection->is_empty()) {
+				selection->head = get_previous_index(selection->head);
 			}
-			cache.invalidate(selection.min());
-			for (std::size_t i = selection.min(); i < selection.max(); ++i) {
-				buffer.remove(selection.min());
-				++offset;
-			}
-			selection = selection.min();
-		}
+			selection.delete_();
+		});
 		collapse_selections(true);
 	}
 	void delete_forward() {
-		std::size_t offset = 0;
-		for (Selection& selection: selections) {
-			selection -= offset;
-			if (selection.is_empty()) {
-				selection.head = get_next_index(selection.head);
+		for_each_selection([&](SelectionIterator& selection) {
+			if (selection->is_empty()) {
+				selection->head = get_next_index(selection->head);
 			}
-			cache.invalidate(selection.min());
-			for (std::size_t i = selection.min(); i < selection.max(); ++i) {
-				buffer.remove(selection.min());
-				++offset;
-			}
-			selection = selection.min();
-		}
+			selection.delete_();
+		});
 		collapse_selections(false);
 	}
 	std::size_t get_index(std::size_t column, std::size_t line) const {
