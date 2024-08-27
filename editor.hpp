@@ -236,11 +236,6 @@ class Editor {
 		const std::size_t max_codepoints = buffer.get_info_for_line_end(line + 1).codepoints;
 		return buffer.get_info_for_codepoints(std::min(codepoints, max_codepoints)).bytes;
 	}
-	void delete_selections() {
-		for_each_selection([](SelectionIterator& selection) {
-			selection.delete_();
-		});
-	}
 	void collapse_selections(bool reverse_direction) {
 		for (std::size_t i = 1; i < selections.size(); ++i) {
 			if (selections[i-1].head == selections[i].head || selections[i-1].max() > selections[i].min()) {
@@ -351,24 +346,17 @@ public:
 		});
 	}
 	void insert_newline() {
-		delete_selections();
-		std::size_t offset = 0;
-		for (Selection& selection: selections) {
-			selection += offset;
-			cache.invalidate(selection.head);
-			buffer.insert(selection.head, '\n');
-			selection += 1;
-			++offset;
-			const std::size_t line = buffer.get_info_for_index(selection.head - 1).newlines;
+		for_each_selection([&](SelectionIterator& selection) {
+			selection.delete_();
+			selection.insert('\n');
+			const std::size_t line = buffer.get_info_for_index(selection->head - 1).newlines;
 			const std::size_t index = buffer.get_info_for_line_start(line).bytes;
 			auto i = buffer.get_iterator(index);
 			while (i != buffer.end() && (*i == ' ' || *i == '\t')) {
-				buffer.insert(selection.head, *i);
-				selection += 1;
-				++offset;
+				selection.insert(*i);
 				++i;
 			}
-		}
+		});
 	}
 	void delete_backward() {
 		for_each_selection([&](SelectionIterator& selection) {
@@ -558,7 +546,9 @@ public:
 	}
 	std::string cut() {
 		std::string result = copy();
-		delete_selections();
+		for_each_selection([&](SelectionIterator& selection) {
+			selection.delete_();
+		});
 		return result;
 	}
 	void paste(const char* text) {
@@ -567,22 +557,17 @@ public:
 			newlines += *c == '\n';
 		}
 		if (newlines + 1 == selections.size()) {
-			delete_selections();
-			newlines = 0;
-			std::size_t offset = 0;
-			for (const char* c = text; *c; ++c) {
+			const char* c = text;
+			for_each_selection([&](SelectionIterator& selection) {
+				selection.delete_();
+				while (*c != '\n' && *c != '\0') {
+					selection.insert(*c);
+					++c;
+				}
 				if (*c == '\n') {
-					++newlines;
-					selections[newlines] += offset;
+					++c;
 				}
-				else {
-					Selection& selection = selections[newlines];
-					cache.invalidate(selection.head);
-					buffer.insert(selection.head, *c);
-					selection += 1;
-					++offset;
-				}
-			}
+			});
 		}
 		else {
 			insert_text(text);
