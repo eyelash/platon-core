@@ -141,6 +141,9 @@ struct Selection {
 	constexpr std::size_t max() const {
 		return is_reversed() ? tail : head;
 	}
+	constexpr Range get_range() const {
+		return is_reversed() ? Range(head, tail) : Range(tail, head);
+	}
 };
 
 class Selections: public std::vector<Selection> {
@@ -157,6 +160,10 @@ struct RenderedLine {
 	std::vector<Range> selections;
 	std::vector<std::size_t> cursors;
 };
+
+constexpr Range operator -(const Range& range, std::size_t pos) {
+	return Range(range.start - pos, range.end - pos);
+}
 
 class Editor {
 	TextBuffer buffer;
@@ -183,11 +190,10 @@ class Editor {
 	}
 	void render_selections(RenderedLine& line, std::size_t index0, std::size_t index1) const {
 		for (const Selection& selection: selections) {
-			if (selection.max() > index0 && selection.min() < index1) {
-				line.selections.emplace_back(std::max(selection.min(), index0) - index0, std::min(selection.max(), index1) - index0);
+			const Range intersection = selection.get_range() & Range(index0, index1);
+			if (intersection) {
+				line.selections.emplace_back(intersection - index0);
 			}
-		}
-		for (const Selection& selection: selections) {
 			if (selection.head >= index0 && selection.head < index1) {
 				line.cursors.emplace_back(selection.head - index0);
 			}
