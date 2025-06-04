@@ -279,7 +279,7 @@ class Editor {
 			++i;
 			return *this;
 		}
-		void delete_() {
+		void delete_text() {
 			Selection& selection = editor->selections[i];
 			if (!selection.is_empty()) {
 				editor->cache.invalidate(selection.min());
@@ -347,13 +347,13 @@ public:
 	}
 	void insert_text(const char* text) {
 		for_each_selection([&](SelectionIterator& selection) {
-			selection.delete_();
+			selection.delete_text();
 			selection.insert(text);
 		});
 	}
 	void insert_newline() {
 		for_each_selection([&](SelectionIterator& selection) {
-			selection.delete_();
+			selection.delete_text();
 			selection.insert('\n');
 			const std::size_t line = buffer.get_info_for_index(selection->head - 1).newlines;
 			const std::size_t index = buffer.get_info_for_line_start(line).bytes;
@@ -369,7 +369,7 @@ public:
 			if (selection->is_empty()) {
 				selection->head = get_previous_index(selection->head);
 			}
-			selection.delete_();
+			selection.delete_text();
 		});
 		collapse_selections(true);
 	}
@@ -378,7 +378,7 @@ public:
 			if (selection->is_empty()) {
 				selection->head = get_next_index(selection->head);
 			}
-			selection.delete_();
+			selection.delete_text();
 		});
 		collapse_selections(false);
 	}
@@ -553,7 +553,7 @@ public:
 	std::string cut() {
 		std::string result = copy();
 		for_each_selection([&](SelectionIterator& selection) {
-			selection.delete_();
+			selection.delete_text();
 		});
 		return result;
 	}
@@ -565,7 +565,7 @@ public:
 		if (newlines + 1 == selections.size()) {
 			const char* c = text;
 			for_each_selection([&](SelectionIterator& selection) {
-				selection.delete_();
+				selection.delete_text();
 				while (*c != '\n' && *c != '\0') {
 					selection.insert(*c);
 					++c;
