@@ -148,7 +148,8 @@ struct Selection {
 
 class Selections: public std::vector<Selection> {
 public:
-	Selections() {
+	std::size_t last_selection;
+	Selections(): last_selection(0) {
 		emplace_back(0);
 	}
 };
@@ -170,7 +171,6 @@ class Editor {
 	const Language* language;
 	mutable Cache cache;
 	Selections selections;
-	std::size_t last_selection;
 	void highlight(std::vector<Span>& spans, std::size_t index0, std::size_t index1) const {
 		if (language == nullptr) {
 			return;
@@ -251,8 +251,8 @@ class Editor {
 				else {
 					selections[i-1] = Selection(selections[i-1].min(), selections[i].max());
 				}
-				if (last_selection >= i) {
-					--last_selection;
+				if (selections.last_selection >= i) {
+					--selections.last_selection;
 				}
 				selections.erase(selections.begin() + i);
 				--i;
@@ -308,8 +308,8 @@ class Editor {
 		}
 	};
 public:
-	Editor(): language(nullptr), last_selection(0) {}
-	Editor(const char* path): buffer(path), language(prism::get_language(get_file_name(path))), last_selection(0) {}
+	Editor(): language(nullptr) {}
+	Editor(const char* path): buffer(path), language(prism::get_language(get_file_name(path))) {}
 	std::size_t get_total_lines() const {
 		return buffer.get_total_lines();
 	}
@@ -393,7 +393,7 @@ public:
 	void set_cursor(std::size_t column, std::size_t line) {
 		selections.clear();
 		selections.emplace_back(get_index(column, line));
-		last_selection = 0;
+		selections.last_selection = 0;
 	}
 	void toggle_cursor(std::size_t column, std::size_t line) {
 		const std::size_t cursor = get_index(column, line);
@@ -404,11 +404,11 @@ public:
 				if (selection.min() <= cursor) {
 					const std::size_t index = i;
 					selections.erase(selections.begin() + index);
-					if (last_selection == index) {
-						last_selection = selections.size() - 1;
+					if (selections.last_selection == index) {
+						selections.last_selection = selections.size() - 1;
 					}
-					else if (last_selection > index) {
-						--last_selection;
+					else if (selections.last_selection > index) {
+						--selections.last_selection;
 					}
 					return;
 				}
@@ -419,10 +419,10 @@ public:
 		}
 		const std::size_t index = i;
 		selections.emplace(selections.begin() + index, cursor);
-		last_selection = index;
+		selections.last_selection = index;
 	}
 	void extend_selection(std::size_t column, std::size_t line) {
-		Selection& selection = selections[last_selection];
+		Selection& selection = selections[selections.last_selection];
 		selection.head = get_index(column, line);
 		collapse_selections(selection.is_reversed());
 	}
@@ -531,7 +531,7 @@ public:
 	void select_all() {
 		selections.clear();
 		selections.emplace_back(0, buffer.get_size() - 1);
-		last_selection = 0;
+		selections.last_selection = 0;
 	}
 	const Theme& get_theme() const {
 		return prism::get_theme("one-dark");
