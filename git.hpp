@@ -1,6 +1,8 @@
 #pragma once
 
 #include <cstdint>
+#include <algorithm>
+#include <vector>
 
 class Adler32 {
 public:
@@ -107,6 +109,297 @@ public:
 		write_word<3>(hash, H3);
 		write_word<4>(hash, H4);
 		return hash;
+	}
+};
+
+class BitReader {
+	const char* data;
+	const char* end;
+	int bit_position;
+public:
+	BitReader(const char* data, const char* end): data(data), end(end), bit_position(0) {}
+	BitReader(const std::vector<char>& v): BitReader(v.data(), v.data() + v.size()) {}
+	explicit operator bool() const {
+		return data != end;
+	}
+	unsigned char get() const {
+		return *data;
+	}
+	std::size_t get_position(const char* start) const {
+		return data - start;
+	}
+	int read_bit() {
+		int result = get() >> bit_position;
+		if (++bit_position == 8) {
+			++data;
+			bit_position = 0;
+		}
+		return result & 1;
+	}
+	int read_int(int bits) {
+		int result = 0;
+		for (int i = 0; i < bits; ++i)
+			result |= read_bit() << i;
+		return result;
+	}
+	void skip_to_next_byte() {
+		if (bit_position > 0) {
+			++data;
+			bit_position = 0;
+		}
+	}
+	char read_aligned_byte() {
+		char result = *data;
+		++data;
+		return result;
+	}
+	template <class T> T read_aligned() {
+		T result = 0;
+		for (std::size_t i = 0; i < sizeof(T); ++i) {
+			result |= get() << ((sizeof(T) - 1 - i) * 8);
+			++data;
+		}
+		return result;
+	}
+};
+
+class Inflate {
+	// https://datatracker.ietf.org/doc/html/rfc1951
+	class Tree {
+	public:
+		class Node {
+		public:
+			unsigned int value;
+			static constexpr unsigned int value_bit = 1u << (sizeof(unsigned int) * 8 - 1);
+			void set_right_child(int right_child) {
+				this->value = right_child;
+			}
+			void set_value(int value) {
+				this->value = value | value_bit;
+			}
+		};
+		Node nodes[288+287];
+		void set_right_child(int index, int right_child) {
+			nodes[index].value = right_child;
+		}
+		void set_value(int index, int value) {
+			nodes[index].value = value | Node::value_bit;
+		}
+		bool has_value(int index) const {
+			return nodes[index].value & Node::value_bit;
+		}
+		int get_value(int index) const {
+			return nodes[index].value & (~Node::value_bit);
+		}
+		int get_left_child(int index) const {
+			return index + 1;
+		}
+		int get_right_child(int index) const {
+			return nodes[index].value;
+		}
+		int decode_value(BitReader& reader) const {
+			int index = 0;
+			while (!has_value(index)) {
+				if (reader.read_bit())
+					index = get_right_child(index);
+				else
+					index = get_left_child(index);
+			}
+			return get_value(index);
+		}
+	};
+	class TreeBuilder {
+		struct Entry {
+			int value;
+			char bits;
+		};
+		Entry entries[288];
+		int size = 0;
+	public:
+		void set_bits(int value, char bits) {
+			if (bits == 0) return;
+			entries[size] = {value, bits};
+			++size;
+		}
+		Tree* tree;
+		int index = 0;
+		int tree_index = 0;
+		static bool compare_entries(Entry lhs, Entry rhs) {
+			if (lhs.bits != rhs.bits)
+				return lhs.bits < rhs.bits;
+			return lhs.value < rhs.value;
+		}
+		int add_node(char bits) {
+			const int current_tree_index = tree_index;
+			Tree::Node* node = &tree->nodes[current_tree_index];
+			++tree_index;
+			if (entries[index].bits == bits) {
+				node->set_value(entries[index].value);
+				++index;
+			}
+			else {
+				add_node(bits + 1);
+				node->set_right_child(add_node(bits + 1));
+			}
+			return current_tree_index;
+		}
+		void build_tree(Tree* tree) {
+			std::sort(entries, entries + size, compare_entries);
+			this->tree = tree;
+			add_node(0);
+		}
+		Tree build_tree() {
+			Tree tree;
+			build_tree(&tree);
+			return tree;
+		}
+	};
+	static void build_fixed_literal_tree(Tree* tree) {
+		TreeBuilder tree_builder;
+		for (int value = 0; value <= 143; ++value)
+			tree_builder.set_bits(value, 8);
+		for (int value = 144; value <= 255; ++value)
+			tree_builder.set_bits(value, 9);
+		for (int value = 256; value <= 279; ++value)
+			tree_builder.set_bits(value, 7);
+		for (int value = 280; value <= 287; ++value)
+			tree_builder.set_bits(value, 8);
+		tree_builder.build_tree(tree);
+	}
+	static void build_fixed_distance_tree(Tree* tree) {
+		TreeBuilder tree_builder;
+		for (int value = 0; value <= 31; ++value)
+			tree_builder.set_bits(value, 5);
+		tree_builder.build_tree(tree);
+	}
+	static void build_length_tree(BitReader& reader, int codes, Tree* tree) {
+		TreeBuilder tree_builder;
+		static constexpr int values[] = {16, 17, 18, 0, 8, 7, 9, 6, 10, 5, 11, 4, 12, 3, 13, 2, 14, 1, 15};
+		for (int i = 0; i < codes; ++i) {
+			tree_builder.set_bits(values[i], reader.read_int(3));
+		}
+		tree_builder.build_tree(tree);
+	}
+	static void build_dynamic_trees(BitReader& reader, const Tree& length_tree, int literal_lengths, int distance_lengths, Tree* literal_tree, Tree* distance_tree) {
+		TreeBuilder literal_builder;
+		TreeBuilder distance_builder;
+		int i = 0;
+		int previous_length;
+		auto set_bits = [&](char bits) {
+			if (i < literal_lengths)
+				literal_builder.set_bits(i, bits);
+			else
+				distance_builder.set_bits(i - literal_lengths, bits);
+			++i;
+			previous_length = bits;
+		};
+		while (i < literal_lengths + distance_lengths) {
+			const int value = length_tree.decode_value(reader);
+			if (value <= 15) {
+				set_bits(value);
+			}
+			else if (value == 16) {
+				const int end = i + 3 + reader.read_int(2);
+				while (i < end) {
+					set_bits(previous_length);
+				}
+			}
+			else if (value == 17) {
+				i += 3 + reader.read_int(3);
+				previous_length = 0;
+			}
+			else if (value == 18) {
+				i += 11 + reader.read_int(7);
+				previous_length = 0;
+			}
+		}
+		literal_builder.build_tree(literal_tree);
+		distance_builder.build_tree(distance_tree);
+	}
+	static int get_length(BitReader& reader, int code) {
+		if (code < 265) {
+			return code - 257 + 3;
+		}
+		if (code < 285) {
+			code = code - 261;
+			const int extra_bits = code / 4;
+			return 3 + ((4 + code % 4) << extra_bits) + reader.read_int(extra_bits);
+		}
+		return 258;
+	}
+	static int get_distance(BitReader& reader, int code) {
+		if (code < 4) {
+			return code + 1;
+		}
+		code = code - 2;
+		const int extra_bits = code / 2;
+		return 1 + ((2 + code % 2) << extra_bits) + reader.read_int(extra_bits);
+	}
+public:
+	static std::vector<char> inflate(BitReader& reader) {
+		std::vector<char> result;
+		while (true) {
+			const int bfinal = reader.read_bit();
+			const int btype = reader.read_int(2);
+			if (btype == 0) {
+				reader.skip_to_next_byte();
+				const int len = reader.read_int(16);
+				const int nlen = reader.read_int(16);
+				for (int i = 0; reader && i < len; ++i) {
+					result.push_back(reader.read_aligned_byte());
+				}
+			}
+			else {
+				Tree literal_tree;
+				Tree distance_tree;
+				if (btype == 1) {
+					build_fixed_literal_tree(&literal_tree);
+					build_fixed_distance_tree(&distance_tree);
+				}
+				else if (btype == 2) {
+					const int hlit = reader.read_int(5);
+					const int hdist = reader.read_int(5);
+					const int hclen = reader.read_int(4);
+					Tree length_tree;
+					build_length_tree(reader, hclen + 4, &length_tree);
+					build_dynamic_trees(reader, length_tree, hlit + 257, hdist + 1, &literal_tree, &distance_tree);
+				}
+				while (true) {
+					const int value = literal_tree.decode_value(reader);
+					if (value < 256) {
+						result.push_back(value);
+					}
+					else if (value == 256) {
+						break;
+					}
+					else {
+						const int length = get_length(reader, value);
+						const int distance = get_distance(reader, distance_tree.decode_value(reader));
+						for (int i = result.size() - distance, end = i + length; i < end; ++i) {
+							result.push_back(result[i]);
+						}
+					}
+				}
+			}
+			if (bfinal) break;
+		}
+		return result;
+	}
+	static std::vector<char> zlib_decompress(BitReader& reader) {
+		// https://datatracker.ietf.org/doc/html/rfc1950
+		const int cm = reader.read_int(4);
+		const int cinfo = reader.read_int(4);
+		const int fcheck = reader.read_int(5);
+		const int fdict = reader.read_bit();
+		const int flevel = reader.read_int(2);
+		if (fdict) return {};
+		std::vector<char> result = inflate(reader);
+		reader.skip_to_next_byte();
+		const std::uint32_t adler32_expected = reader.read_aligned<std::uint32_t>();
+		Adler32 adler32;
+		for (char c: result) adler32 << c;
+		if (adler32 != adler32_expected) return {};
+		return result;
 	}
 };
 
