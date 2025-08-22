@@ -153,6 +153,16 @@ public:
 		return Type::NOT_FOUND;
 		#endif
 	}
+	Path canonical() const {
+		#ifdef _WIN32
+		// GetFinalPathNameByHandle
+		#else
+		char* canonical = realpath(path.c_str(), nullptr);
+		Path path(canonical);
+		free(canonical);
+		return path;
+		#endif
+	}
 	std::string filename() const {
 		for (std::size_t i = path.size(); i > 0; --i) {
 			if (is_separator(path[i-1])) {
