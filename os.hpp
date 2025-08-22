@@ -214,8 +214,8 @@ public:
 };
 
 class Mmap {
+	void* address;
 	std::size_t size;
-	char* map;
 public:
 	Mmap(const char* path) {
 		#ifdef _WIN32
@@ -224,39 +224,66 @@ public:
 		GetFileSizeEx(file, &large_integer);
 		size = large_integer.QuadPart;
 		HANDLE mapping = CreateFileMapping(file, nullptr, PAGE_READONLY, 0, 0, nullptr);
-		map = static_cast<char*>(MapViewOfFile(mapping, FILE_MAP_READ, 0, 0, size));
+		address = MapViewOfFile(mapping, FILE_MAP_READ, 0, 0, size);
 		CloseHandle(mapping);
 		CloseHandle(file);
 		#else
 		const int fd = open(path, O_RDONLY);
-		struct stat stat;
-		fstat(fd, &stat);
-		size = stat.st_size;
-		map = static_cast<char*>(mmap(nullptr, size, PROT_READ, MAP_PRIVATE, fd, 0));
-		close(fd);
+		if (fd != -1) {
+			struct stat stat;
+			fstat(fd, &stat);
+			size = stat.st_size;
+			address = mmap(nullptr, size, PROT_READ, MAP_PRIVATE, fd, 0);
+			if (address == MAP_FAILED) {
+				address = nullptr;
+				size = 0;
+			}
+			close(fd);
+		}
+		else {
+			address = nullptr;
+			size = 0;
+		}
 		#endif
 	}
 	Mmap(const Path& path): Mmap(path.c_str()) {}
+	Mmap(): address(nullptr), size(0) {}
 	Mmap(const Mmap&) = delete;
+	Mmap(Mmap&& mmap) {
+		address = mmap.address;
+		size = mmap.size;
+		mmap.address = nullptr;
+		mmap.size = 0;
+	}
 	~Mmap() {
 		#ifdef _WIN32
-		UnmapViewOfFile(map);
+		UnmapViewOfFile(address);
 		#else
-		munmap(map, size);
+		if (address) {
+			munmap(address, size);
+		}
 		#endif
 	}
 	Mmap& operator =(const Mmap&) = delete;
+	Mmap& operator =(Mmap&& mmap) {
+		std::swap(address, mmap.address);
+		std::swap(size, mmap.size);
+		return *this;
+	}
+	explicit operator bool() const {
+		return address != nullptr;
+	}
 	std::size_t get_size() const {
 		return size;
 	}
 	char operator [](std::size_t i) const {
-		return map[i];
+		return static_cast<char*>(address)[i];
 	}
 	const char* begin() const {
-		return map;
+		return static_cast<char*>(address);
 	}
 	const char* end() const {
-		return map + size;
+		return static_cast<char*>(address) + size;
 	}
 };
 
