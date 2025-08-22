@@ -1,6 +1,8 @@
 #pragma once
 
+#include "os.hpp"
 #include <cstdint>
+#include <cstddef>
 #include <algorithm>
 #include <vector>
 
@@ -23,9 +25,50 @@ public:
 
 template <int bits> class Hash {
 public:
+	static std::uint8_t from_hex(char hex) {
+		if (hex >= '0' && hex <= '9')
+			return hex - '0';
+		if (hex >= 'a' && hex <= 'f')
+			return 10 + (hex - 'a');
+		if (hex >= 'A' && hex <= 'F')
+			return 10 + (hex - 'A');
+		return 0;
+	}
+	static std::uint8_t from_hex(const char* s) {
+		return from_hex(s[0]) << 4 | from_hex(s[1]);
+	}
+	static char to_hex(std::uint8_t n) {
+		if (n < 10)
+			return '0' + n;
+		if (n < 16)
+			return 'a' + (n - 10);
+		return 0;
+	}
+	static void to_hex(std::uint8_t n, char* s) {
+		s[0] = to_hex(n / 16);
+		s[1] = to_hex(n % 16);
+	}
 	static_assert(bits % 8 == 0);
 	std::uint8_t data[bits/8];
 	Hash() {}
+	bool operator ==(const Hash& other) const {
+		for (int i = 0; i < bits / 8; ++i) {
+			if (data[i] != other.data[i]) return false;
+		}
+		return true;
+	}
+	bool operator <(const Hash& other) const {
+		for (int i = 0; i < bits / 8; ++i) {
+			if (data[i] != other.data[i]) return data[i] < other.data[i];
+		}
+		return false;
+	}
+	/*friend std::ostream& operator <<(std::ostream& os, const Hash& h) {
+		for (int i = 0; i < bits / 8; ++i) {
+			os << to_hex(h.data[i] / 16) << to_hex(h.data[i] % 16);
+		}
+		return os;
+	}*/
 };
 
 class SHA1 {
@@ -95,6 +138,17 @@ public:
 		push_back(c);
 		return *this;
 	}
+	SHA1& operator <<(const char* s) {
+		for (; *s != '\0'; ++s)
+			push_back(*s);
+		return *this;
+	}
+	SHA1& operator <<(std::size_t size) {
+		if (size >= 10)
+			operator <<(size / 10);
+		push_back('0' + size % 10);
+		return *this;
+	}
 	Hash<160> finish() {
 		const std::uint64_t bit_size = size * 8;
 		push_back(0x80);
@@ -118,6 +172,8 @@ class BitReader {
 	int bit_position;
 public:
 	BitReader(const char* data, const char* end): data(data), end(end), bit_position(0) {}
+	BitReader(const Mmap& mmap): BitReader(mmap.begin(), mmap.end()) {}
+	BitReader(const Mmap& mmap, std::size_t offset): BitReader(mmap.begin() + offset, mmap.end()) {}
 	BitReader(const std::vector<char>& v): BitReader(v.data(), v.data() + v.size()) {}
 	explicit operator bool() const {
 		return data != end;
@@ -160,6 +216,78 @@ public:
 			++data;
 		}
 		return result;
+	}
+};
+
+template <class T> class IndexIterator {
+	const T* t;
+	std::size_t index_;
+public:
+	IndexIterator(const T* t, std::size_t index_): t(t), index_(index_) {}
+	using difference_type = std::size_t;
+	using value_type = typename T::value_type;
+	using pointer = const value_type*;
+	using reference = const value_type&;
+	using iterator_category = std::random_access_iterator_tag;
+	auto operator *() const -> decltype((*t)[index_]) {
+		return (*t)[index_];
+	}
+	auto operator [](difference_type i) const -> decltype((*t)[index_ + i]) {
+		return (*t)[index_ + i];
+	}
+	IndexIterator operator +(difference_type d) const {
+		return IndexIterator(t, index_ + d);
+	}
+	// TODO: differentce_type + IndexIterator
+	IndexIterator operator -(difference_type d) const {
+		return IndexIterator(t, index_ - d);
+	}
+	IndexIterator& operator +=(difference_type d) {
+		index_ += d;
+		return *this;
+	}
+	IndexIterator& operator -=(difference_type d) {
+		index_ -= d;
+		return *this;
+	}
+	IndexIterator& operator ++() {
+		++index_;
+		return *this;
+	}
+	IndexIterator& operator --() {
+		--index_;
+		return *this;
+	}
+	IndexIterator operator ++(int) {
+		IndexIterator result = *this;
+		++index_;
+		return result;
+	}
+	IndexIterator operator --(int) {
+		IndexIterator result = *this;
+		--index_;
+		return result;
+	}
+	difference_type operator -(const IndexIterator& other) const {
+		return index_ - other.index_;
+	}
+	bool operator ==(const IndexIterator& other) const {
+		return index_ == other.index_;
+	}
+	bool operator !=(const IndexIterator& other) const {
+		return index_ != other.index_;
+	}
+	bool operator <(const IndexIterator& other) const {
+		return index_ < other.index_;
+	}
+	bool operator >(const IndexIterator& other) const {
+		return index_ > other.index_;
+	}
+	bool operator <=(const IndexIterator& other) const {
+		return index_ <= other.index_;
+	}
+	bool operator >=(const IndexIterator& other) const {
+		return index_ >= other.index_;
 	}
 };
 
@@ -404,5 +532,423 @@ public:
 };
 
 namespace git {
+
+class Parser {
+	const char* data_;
+	const char* end_;
+public:
+	constexpr Parser(): data_(nullptr), end_(nullptr) {}
+	constexpr Parser(const char* data_, const char* end_): data_(data_), end_(end_) {}
+	Parser(const Mmap& mmap): data_(mmap.begin()), end_(mmap.end()) {}
+	Parser(const std::vector<char>& v): data_(v.data()), end_(v.data() + v.size()) {}
+	explicit constexpr operator bool() const {
+		return data_ != nullptr;
+	}
+	template <class T> T to() const {
+		return T(data_, end_);
+	};
+	std::string to_string() const {
+		return std::string(data_, end_);
+	}
+	std::vector<char> to_vector() const {
+		return std::vector<char>(data_, end_);
+	}
+	bool parse(const char* s) {
+		const char* d = data_;
+		while (*s != '\0') {
+			if (d == end_ || *d != *s) {
+				return false;
+			}
+			++d;
+			++s;
+		}
+		data_ = d;
+		return true;
+	}
+	std::size_t parse_size() {
+		std::size_t size = 0;
+		while (data_ != end_ && *data_ >= '0' && *data_ <= '9') {
+			size = size * 10 + (*data_ - '0');
+			++data_;
+		}
+		return size;
+	}
+	template <int bits = 160> Hash<bits> parse_hash() {
+		Hash<bits> hash;
+		if (bits / 8 * 2 > end_ - data_) {
+			return hash;
+		}
+		for (int i = 0; i < bits / 8; ++i) {
+			hash.data[i] = Hash<160>::from_hex(data_);
+			data_ += 2;
+		}
+		return hash;
+	}
+	Parser parse_until(char delimiter) {
+		const char* d = data_;
+		while (data_ != end_ && *data_ != delimiter) {
+			++data_;
+		}
+		const char* e = data_;
+		if (data_ != end_ && *data_ == delimiter) {
+			++data_;
+		}
+		return Parser(d, e);
+	}
+	Parser line() {
+		return parse_until('\n');
+	}
+};
+
+enum {
+	OBJECT_TYPE_COMMIT = 1,
+	OBJECT_TYPE_TREE = 2,
+	OBJECT_TYPE_BLOB = 3,
+	OBJECT_TYPE_TAG = 4,
+	OBJECT_TYPE_OFS_DELTA = 6,
+	OBJECT_TYPE_REF_DELTA = 7
+};
+
+class Commit {
+
+};
+
+class Tree {
+
+};
+
+class Object {
+	std::uint8_t type_;
+	std::vector<char> data_;
+public:
+	Object(): type_(0) {}
+	Object(std::uint8_t type_): type_(type_) {}
+	Object(std::uint8_t type_, std::vector<char>&& data_): type_(type_), data_(std::move(data_)) {}
+	Object(const std::vector<char>& data_) {
+		Parser parser(data_);
+		Parser header = parser.parse_until('\0');
+		if (header.parse("commit "))
+			type_ = 1;
+		else if (header.parse("tree "))
+			type_ = 2;
+		else if (header.parse("blob "))
+			type_ = 3;
+		else
+			type_ = 0;
+		this->data_ = parser.to<std::vector<char>>();
+	}
+	void push_back(char d) {
+		data_.push_back(d);
+	}
+	char operator [](std::size_t i) const {
+		return data_[i];
+	}
+	const char* data() const {
+		return data_.data();
+	}
+	std::size_t size() const {
+		return data_.size();
+	}
+	std::uint8_t type() const {
+		return type_;
+	}
+	explicit operator bool() const {
+		return type_ != 0;
+	}
+	bool is_commit() const {
+		return type_ == 1;
+	}
+	bool is_tree() const {
+		return type_ == 2;
+	}
+	bool is_blob() const {
+		return type_ == 3;
+	}
+	Hash<160> hash() const {
+		SHA1 hasher;
+		if (is_commit())
+			hasher << "commit ";
+		else if (is_tree())
+			hasher << "tree ";
+		else if (is_blob())
+			hasher << "blob ";
+		hasher << size() << '\0';
+		for (char c: data_)
+			hasher << c;
+		return hasher.finish();
+	}
+};
+
+class PackfileIndex {
+	Mmap data;
+	static std::uint8_t read_byte(const char* s) {
+		return *s;
+	}
+	static std::uint32_t read_word(const char* s) {
+		return read_byte(s) << 24 | read_byte(s+1) << 16 | read_byte(s+2) << 8 | read_byte(s+3);
+	}
+	class Fanout {
+		const char* data_;
+	public:
+		Fanout(const char* data_): data_(data_) {}
+		using value_type = std::uint32_t;
+		std::size_t size() const {
+			return 256;
+		}
+		std::uint32_t operator [](std::size_t i) const {
+			return read_word(data_ + i * 4);
+		}
+		IndexIterator<Fanout> begin() const {
+			return IndexIterator<Fanout>(this, 0);
+		}
+		IndexIterator<Fanout> end() const {
+			return IndexIterator<Fanout>(this, 256);
+		}
+	};
+	class Entry {
+		const char* hash_;
+		const char* offset_;
+	public:
+		Entry(const char* hash_, const char* offset_): hash_(hash_), offset_(offset_) {}
+		Hash<160> hash() const {
+			Hash<160> result;
+			for (std::size_t i = 0; i < 20; ++i)
+				result.data[i] = read_byte(hash_ + i);
+			return result;
+		}
+		std::uint32_t offset() const {
+			return read_word(offset_);
+		}
+		bool operator <(const Hash<160>& other) const {
+			return hash() < other;
+		}
+	};
+	class Entries {
+		const char* hashes;
+		std::size_t hash_stride;
+		const char* offsets;
+		std::size_t offset_stride;
+		std::size_t size_;
+	public:
+		Entries(const char* hashes, std::size_t hash_stride, const char* offsets, std::size_t offset_stride, std::size_t size_): hashes(hashes), hash_stride(hash_stride), offsets(offsets), offset_stride(offset_stride), size_(size_) {}
+		using value_type = Entry;
+		std::size_t size() const {
+			return size_;
+		}
+		Entry operator [](std::size_t i) const {
+			return Entry(hashes + i * hash_stride, offsets + i * offset_stride);
+		}
+		IndexIterator<Entries> begin() const {
+			return IndexIterator<Entries>(this, 0);
+		}
+		IndexIterator<Entries> end() const {
+			return IndexIterator<Entries>(this, size_);
+		}
+	};
+	bool is_v2() const {
+		Parser magic(data.data(), data.data() + 4);
+		const std::uint32_t version = read_word(data.data() + 4);
+		return magic.parse("\377tOc") && version == 2;
+	}
+	Fanout fanout() const {
+		if (is_v2())
+			return Fanout(data.data() + 8);
+		else
+			return Fanout(data.data());
+	}
+	Entries entries(const Fanout& fanout) const {
+		std::size_t size = fanout[255];
+		if (is_v2()) {
+			const char* hashes = data.data() + 8 + 256 * 4;
+			const char* offsets = hashes + 20 * size + 4 * size;
+			return Entries(hashes, 20, offsets, 4, size);
+		}
+		else {
+			const char* offsets = data.data() + 256 * 4;
+			const char* hashes = offsets + 4;
+			std::size_t stride = 4 + 20;
+			return Entries(hashes, 24, offsets, 24, size);
+		}
+	}
+public:
+	PackfileIndex(const Path& path): data(path) {}
+	explicit operator bool() const {
+		return static_cast<bool>(data);
+	}
+	std::uint32_t find_object(const Hash<160>& hash) const {
+		Fanout fanout = this->fanout();
+		Entries entries = this->entries(fanout);
+		const std::uint8_t fanout_index = hash.data[0];
+		const std::uint32_t lower = fanout_index > 0 ? fanout[fanout_index - 1] : 0;
+		const std::uint32_t upper = fanout[fanout_index];
+		auto i = std::lower_bound(entries.begin() + lower, entries.begin() + upper, hash);
+		if (i != entries.end() && (*i).hash() == hash) {
+			return (*i).offset();
+		}
+		return 0;
+	}
+	/*void print() const {
+		for (auto entry: entries(fanout())) {
+			std::cout << entry.hash() << "  " << entry.offset() << std::endl;
+		}
+	}*/
+};
+
+class Packfile {
+	Mmap pack;
+	static std::uint32_t read_size(BitReader& reader, std::uint8_t& type) {
+		std::uint8_t byte = reader.read_aligned_byte();
+		type = (byte >> 4) & 0x07;
+		std::uint32_t size = byte & 0x0F;
+		int pos = 4;
+		while (byte & 0x80) {
+			byte = reader.read_aligned_byte();
+			size |= (byte & 0x7F) << pos;
+			pos += 7;
+		}
+		return size;
+	}
+	static std::uint32_t read_size(BitReader& reader) {
+		std::uint8_t byte = reader.read_aligned_byte();
+		std::uint32_t size = byte & 0x7F;
+		int pos = 7;
+		while (byte & 0x80) {
+			byte = reader.read_aligned_byte();
+			size |= (byte & 0x7F) << pos;
+			pos += 7;
+		}
+		return size;
+	}
+	static std::uint32_t read_offset(BitReader& reader) {
+		std::uint8_t byte = reader.read_aligned_byte();
+		std::uint32_t offset = byte & 0x7F;
+		while (byte & 0x80) {
+			byte = reader.read_aligned_byte();
+			offset = ((offset + 1) << 7) | (byte & 0x7F);
+		}
+		return offset;
+	}
+public:
+	Packfile(const Path& path): pack(path) {}
+	Object read_object(BitReader& reader) const {
+		const std::uint32_t position = reader.get_position(pack.data());
+		std::uint8_t type;
+		std::uint32_t size = read_size(reader, type);
+		if (type >= 1 && type <= 4) {
+			return Object(type, Inflate::zlib_decompress(reader));
+		}
+		else if (type == 6) { // offset delta
+			std::uint32_t offset = read_offset(reader);
+			Object base = read_object(position - offset);
+			auto delta = Inflate::zlib_decompress(reader);
+			BitReader delta_reader(delta);
+			std::uint32_t base_size = read_size(delta_reader);
+			std::uint32_t size = read_size(delta_reader);
+			Object object(base.type());
+			while (delta_reader) {
+				const std::uint8_t instruction = delta_reader.read_aligned_byte();
+				if (instruction & 0x80) { // copy from base
+					std::uint8_t arguments[7];
+					for (int i = 0; i < 7; ++i) {
+						if (instruction & (1 << i))
+							arguments[i] = delta_reader.read_aligned_byte();
+						else
+							arguments[i] = 0;
+					}
+					std::uint32_t copy_offset = arguments[0] | arguments[1] << 8 | arguments[2] << 16 | arguments[3] << 24;
+					std::uint32_t copy_size = arguments[4] | arguments[5] << 8 | arguments[6] << 16;
+					if (copy_size == 0) copy_size = 0x10000;
+					for (std::uint32_t i = copy_offset; i < copy_offset + copy_size; ++i) {
+						object.push_back(base[i]);
+					}
+				}
+				else { // add new data
+					for (std::uint8_t i = 0; i < instruction; ++i) {
+						object.push_back(delta_reader.read_aligned_byte());
+					}
+				}
+			}
+			return object;
+		}
+		else {
+			// ref delta or invalid
+			return Object();
+		}
+	}
+	Object read_object(std::uint32_t offset) const {
+		BitReader reader(pack, offset);
+		return read_object(reader);
+	}
+};
+
+class Repository {
+	Path path;
+	Path get_dir() const {
+		Path p = path / ".git";
+		while (true) {
+			const Path::Type type = p.type();
+			if (type == Path::Type::DIRECTORY) {
+				return p;
+			}
+			if (type == Path::Type::REGULAR) {
+				Mmap mmap(p);
+				Parser parser(mmap);
+				if (parser.parse("gitdir: ")) {
+					p = path / parser.line().to<std::string>();
+					continue;
+				}
+				return Path();
+			}
+			else {
+				return Path();
+			}
+		}
+	}
+public:
+	Repository(const char* path): path(path) {}
+	Hash<160> head() const {
+		Path root = get_dir();
+		Path p = root / "HEAD";
+		while (true) {
+			Mmap mmap(p);
+			Parser parser(mmap);
+			if (parser.parse("ref: ")) {
+				p = root / parser.line().to<std::string>();
+				continue;
+			}
+			return parser.parse_hash();
+		}
+	}
+	Object find_object(const Hash<160>& hash) const {
+		Path root = get_dir();
+		char hash_head[3];
+		Hash<160>::to_hex(hash.data[0], hash_head);
+		hash_head[2] = '\0';
+		char hash_tail[39];
+		for (int i = 1; i < 160 / 8; ++i)
+			Hash<160>::to_hex(hash.data[i], hash_tail + i * 2 - 2);
+		hash_tail[38] = '\0';
+		Mmap mmap(root / "objects" / hash_head / hash_tail);
+		if (mmap) {
+			BitReader reader(mmap);
+			return Object(Inflate::zlib_decompress(reader));
+		}
+		Path pack_dir = root / "objects" / "pack";
+		for (auto pack: pack_dir.children()) {
+			Path pack_path = pack_dir / pack;
+			if (pack_path.extension() == "pack") {
+				Path index_path = pack_path.with_extension("idx");
+				PackfileIndex packfile_index(index_path);
+				if (packfile_index) {
+					if (std::uint32_t offset = packfile_index.find_object(hash)) {
+						Packfile packfile(pack_path);
+						return packfile.read_object(offset);
+					}
+				}
+			}
+		}
+		return Object();
+	}
+};
 
 }

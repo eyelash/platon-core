@@ -283,6 +283,9 @@ public:
 	explicit operator bool() const {
 		return address != nullptr;
 	}
+	const char* data() const {
+		return static_cast<char*>(address);
+	}
 	std::size_t get_size() const {
 		return size;
 	}
