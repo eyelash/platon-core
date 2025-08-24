@@ -542,7 +542,7 @@ public:
 	Parser(const Mmap& mmap): data_(mmap.begin()), end_(mmap.end()) {}
 	Parser(const std::vector<char>& v): data_(v.data()), end_(v.data() + v.size()) {}
 	explicit constexpr operator bool() const {
-		return data_ != nullptr;
+		return data_ != end_;
 	}
 	template <class T> T to() const {
 		return T(data_, end_);
@@ -584,6 +584,17 @@ public:
 		}
 		return hash;
 	}
+	template <int bits = 160> Hash<bits> parse_hash_binary() {
+		Hash<bits> hash;
+		if (bits / 8 > end_ - data_) {
+			return hash;
+		}
+		for (int i = 0; i < bits / 8; ++i) {
+			hash.data[i] = *data_;
+			data_ += 1;
+		}
+		return hash;
+	}
 	Parser parse_until(char delimiter) {
 		const char* d = data_;
 		while (data_ != end_ && *data_ != delimiter) {
@@ -610,11 +621,72 @@ enum {
 };
 
 class Commit {
-
+	Hash<160> tree_;
+	std::vector<Hash<160>> parents_;
+	std::string message_;
+public:
+	Commit(Parser parser) {
+		while (parser) {
+			Parser line = parser.line();
+			if (!line) {
+				break;
+			}
+			if (line.parse("tree "))
+				tree_ = line.parse_hash();
+			else if (line.parse("parent "))
+				parents_.push_back(line.parse_hash());
+		}
+		message_ = parser.to<std::string>();
+	}
+	const Hash<160>& tree() const {
+		return tree_;
+	}
+	const std::vector<Hash<160>>& parents() const {
+		return parents_;
+	}
+	const std::string& message() const {
+		return message_;
+	}
 };
 
 class Tree {
-
+	struct Entry {
+		std::string mode;
+		std::string name;
+		Hash<160> hash;
+		Entry(Parser& parser) {
+			mode = parser.parse_until(' ').to<std::string>();
+			name = parser.parse_until('\0').to<std::string>();
+			hash = parser.parse_hash_binary();
+		}
+		bool operator <(const char* name) const {
+			return this->name < name;
+		}
+		bool operator <(const Entry& entry) const {
+			return name < entry.name;
+		}
+	};
+	std::vector<Entry> entries;
+public:
+	Tree(Parser parser) {
+		while (parser) {
+			entries.emplace_back(parser);
+		}
+		std::sort(entries.begin(), entries.end());
+	}
+	Hash<160> operator [](const char* name) const {
+		auto i = std::lower_bound(entries.begin(), entries.end(), name);
+		if (i != entries.end() && i->name == name) {
+			return i->hash;
+		}
+		return {};
+	}
+	/*friend std::ostream& operator <<(std::ostream& os, const Tree& tree) {
+		for (const Entry& entry: tree.entries) {
+			os << entry.hash << " " << entry.name << std::endl;
+		}
+		return os;
+	}*/
 };
 
 class Object {
@@ -663,6 +735,15 @@ public:
 	}
 	bool is_blob() const {
 		return type_ == 3;
+	}
+	Commit get_commit() const {
+		return Commit(Parser(data_));
+	}
+	Tree get_tree() const {
+		return Tree(Parser(data_));
+	}
+	const std::vector<char>& get_blob() const {
+		return data_;
 	}
 	Hash<160> hash() const {
 		SHA1 hasher;
