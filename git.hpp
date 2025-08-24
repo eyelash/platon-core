@@ -541,6 +541,11 @@ public:
 	constexpr Parser(const char* data_, const char* end_): data_(data_), end_(end_) {}
 	Parser(const Mmap& mmap): data_(mmap.begin()), end_(mmap.end()) {}
 	Parser(const std::vector<char>& v): data_(v.data()), end_(v.data() + v.size()) {}
+	Parser(const char* s): data_(s), end_(s) {
+		while (*end_ != '\0') {
+			++end_;
+		}
+	}
 	explicit constexpr operator bool() const {
 		return data_ != end_;
 	}
@@ -573,27 +578,35 @@ public:
 		}
 		return size;
 	}
-	template <int bits = 160> Hash<bits> parse_hash() {
-		Hash<bits> hash;
-		if (bits / 8 * 2 > end_ - data_) {
-			return hash;
+	static constexpr bool is_hex_char(char c) {
+		return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'a' && c <= 'f');
+	}
+	template <int bits> bool parse_hash(Hash<bits>& hash) {
+		for (int i = 0; i < bits / 8 * 2; ++i) {
+			if (data_ + i == end_ || !is_hex_char(data_[i])) {
+				return false;
+			}
 		}
 		for (int i = 0; i < bits / 8; ++i) {
-			hash.data[i] = Hash<160>::from_hex(data_);
+			hash.data[i] = Hash<bits>::from_hex(data_);
 			data_ += 2;
 		}
+		return true;
+	}
+	template <int bits = 160> Hash<bits> parse_hash() {
+		Hash<bits> hash;
+		parse_hash(hash);
 		return hash;
 	}
-	template <int bits = 160> Hash<bits> parse_hash_binary() {
-		Hash<bits> hash;
+	template <int bits> bool parse_hash_binary(Hash<bits>& hash) {
 		if (bits / 8 > end_ - data_) {
-			return hash;
+			return false;
 		}
 		for (int i = 0; i < bits / 8; ++i) {
 			hash.data[i] = *data_;
 			data_ += 1;
 		}
-		return hash;
+		return true;
 	}
 	Parser parse_until(char delimiter) {
 		const char* d = data_;
@@ -657,7 +670,7 @@ class Tree {
 		Entry(Parser& parser) {
 			mode = parser.parse_until(' ').to<std::string>();
 			name = parser.parse_until('\0').to<std::string>();
-			hash = parser.parse_hash_binary();
+			parser.parse_hash_binary(hash);
 		}
 		bool operator <(const char* name) const {
 			return this->name < name;
@@ -1000,8 +1013,7 @@ public:
 			return parser.parse_hash();
 		}
 	}
-	Object find_object(const Hash<160>& hash) const {
-		Path root = get_dir();
+	Object find_object(const Hash<160>& hash, const Path& root) const {
 		char hash_head[3];
 		Hash<160>::to_hex(hash.data[0], hash_head);
 		hash_head[2] = '\0';
@@ -1026,6 +1038,56 @@ public:
 						return packfile.read_object(offset);
 					}
 				}
+			}
+		}
+		return Object();
+	}
+	Object find_object(const Hash<160>& hash) const {
+		const Path root = get_dir();
+		if (!root) {
+			return Object();
+		}
+		return find_object(hash, root);
+	}
+	Object find_object(const char* rev) const {
+		const Path root = get_dir();
+		if (!root) {
+			return Object();
+		}
+		Parser parser(rev);
+		Hash<160> hash;
+		if (parser.parse_hash(hash)) {
+			if (Object object = find_object(hash, root)) {
+				return object;
+			}
+		}
+		Path paths[] = {
+			root / rev,
+			root / "refs" / rev,
+			root / "refs" / "tags" / rev,
+			root / "refs" / "heads" / rev,
+			root / "refs" / "remotes" / rev,
+			root / "refs" / "remotes" / rev / "HEAD"
+		};
+		for (const Path& p: paths) {
+			Mmap mmap(p);
+			if (!mmap) {
+				continue;
+			}
+			while (true) {
+				Parser parser(mmap);
+				if (parser.parse("ref: ")) {
+					mmap = Mmap(root / parser.line().to<std::string>());
+					if (!mmap) {
+						return Object();
+					}
+					continue;
+				}
+				Hash<160> hash;
+				if (!parser.parse_hash(hash)) {
+					return Object();
+				}
+				return find_object(hash, root);
 			}
 		}
 		return Object();
