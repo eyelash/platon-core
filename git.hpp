@@ -570,13 +570,13 @@ public:
 		data_ = d;
 		return true;
 	}
-	std::size_t parse_size() {
-		std::size_t size = 0;
+	template <class T> T parse_number() {
+		T number = 0;
 		while (data_ != end_ && *data_ >= '0' && *data_ <= '9') {
-			size = size * 10 + (*data_ - '0');
+			number = number * 10 + (*data_ - '0');
 			++data_;
 		}
-		return size;
+		return number;
 	}
 	static constexpr bool is_hex_char(char c) {
 		return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'a' && c <= 'f');
@@ -634,8 +634,39 @@ enum {
 };
 
 class Commit {
+	class User {
+		std::string name_;
+		std::string email_;
+		std::uint64_t time_;
+		std::string timezone_;
+	public:
+		void parse(Parser& parser) {
+			name_ = parser.parse_until('<').to<std::string>();
+			if (name_.size() > 0 && name_.back() == ' ')
+				name_.pop_back();
+			email_ = parser.parse_until('>').to<std::string>();
+			parser.parse(" ");
+			time_ = parser.parse_number<std::uint64_t>();
+			parser.parse(" ");
+			timezone_ = parser.to<std::string>();
+		}
+		const std::string& name() const {
+			return name_;
+		}
+		const std::string& email() const {
+			return email_;
+		}
+		std::uint64_t time() const {
+			return time_;
+		}
+		const std::string& timezone() const {
+			return timezone_;
+		}
+	};
 	Hash<160> tree_;
 	std::vector<Hash<160>> parents_;
+	User author_;
+	User committer_;
 	std::string message_;
 public:
 	Commit(Parser parser) {
@@ -648,6 +679,10 @@ public:
 				tree_ = line.parse_hash();
 			else if (line.parse("parent "))
 				parents_.push_back(line.parse_hash());
+			else if (line.parse("author "))
+				author_.parse(line);
+			else if (line.parse("committer "))
+				committer_.parse(line);
 		}
 		message_ = parser.to<std::string>();
 	}
@@ -657,46 +692,65 @@ public:
 	const std::vector<Hash<160>>& parents() const {
 		return parents_;
 	}
+	const User& author() const {
+		return author_;
+	}
+	const User& committer() const {
+		return committer_;
+	}
 	const std::string& message() const {
 		return message_;
 	}
 };
 
 class Tree {
-	struct Entry {
-		std::string mode;
-		std::string name;
-		Hash<160> hash;
+	class Entry {
+		std::string mode_;
+		std::string name_;
+		Hash<160> hash_;
+	public:
 		Entry(Parser& parser) {
-			mode = parser.parse_until(' ').to<std::string>();
-			name = parser.parse_until('\0').to<std::string>();
-			parser.parse_hash_binary(hash);
+			mode_ = parser.parse_until(' ').to<std::string>();
+			name_ = parser.parse_until('\0').to<std::string>();
+			parser.parse_hash_binary(hash_);
 		}
 		bool operator <(const char* name) const {
-			return this->name < name;
+			return name_ < name;
 		}
 		bool operator <(const Entry& entry) const {
-			return name < entry.name;
+			return name_ < entry.name_;
+		}
+		const std::string& mode() const {
+			return mode_;
+		}
+		const std::string& name() const {
+			return name_;
+		}
+		const Hash<160>& hash() const {
+			return hash_;
 		}
 	};
-	std::vector<Entry> entries;
+	std::vector<Entry> entries_;
 public:
 	Tree(Parser parser) {
 		while (parser) {
-			entries.emplace_back(parser);
+			entries_.emplace_back(parser);
 		}
-		std::sort(entries.begin(), entries.end());
+		//std::sort(entries_.begin(), entries_.end());
 	}
 	Hash<160> operator [](const char* name) const {
-		auto i = std::lower_bound(entries.begin(), entries.end(), name);
-		if (i != entries.end() && i->name == name) {
-			return i->hash;
+		auto i = std::lower_bound(entries_.begin(), entries_.end(), name);
+		if (i != entries_.end() && i->name() == name) {
+			return i->hash();
 		}
 		return {};
 	}
+	const std::vector<Entry>& entries() const {
+		return entries_;
+	}
 	/*friend std::ostream& operator <<(std::ostream& os, const Tree& tree) {
-		for (const Entry& entry: tree.entries) {
-			os << entry.hash << " " << entry.name << std::endl;
+		for (const Entry& entry: tree.entries()) {
+			os << entry.hash() << " " << entry.name() << std::endl;
 		}
 		return os;
 	}*/
@@ -980,22 +1034,18 @@ class Repository {
 	Path get_dir() const {
 		Path p = path / ".git";
 		while (true) {
-			const Path::Type type = p.type();
-			if (type == Path::Type::DIRECTORY) {
+			if (p.type() == Path::Type::DIRECTORY) {
 				return p;
 			}
-			if (type == Path::Type::REGULAR) {
-				Mmap mmap(p);
+			Mmap mmap(p);
+			if (mmap) {
 				Parser parser(mmap);
 				if (parser.parse("gitdir: ")) {
 					p = path / parser.line().to<std::string>();
 					continue;
 				}
-				return Path();
 			}
-			else {
-				return Path();
-			}
+			return Path();
 		}
 	}
 public:
