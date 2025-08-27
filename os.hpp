@@ -88,10 +88,10 @@ public:
 	}
 };
 
-class Directory {
+class Directory0 {
 	const char* path;
 public:
-	constexpr Directory(const char* path): path(path) {}
+	constexpr Directory0(const char* path): path(path) {}
 	DirectoryIterator begin() const {
 		return DirectoryIterator(path);
 	}
@@ -201,8 +201,8 @@ public:
 		}
 		return Path();
 	}
-	Directory children() const {
-		return Directory(path.c_str());
+	Directory0 children() const {
+		return Directory0(path.c_str());
 	}
 	Path& operator /=(const char* s) {
 		path += separator;
@@ -220,6 +220,133 @@ public:
 	}
 	Path operator /(const std::string& s) && {
 		return Path(std::move(path) + separator + s);
+	}
+};
+
+class Directory {
+	#ifdef _WIN32
+	HANDLE handle;
+	WIN32_FIND_DATA find_data;
+	#else
+	DIR* dir;
+	#endif
+public:
+	Directory(const char* path) {
+		#ifdef _WIN32
+		std::string pattern(path);
+		pattern.append("\\*");
+		handle = FindFirstFile(pattern.c_str(), &find_data);
+		#else
+		dir = opendir(path);
+		#endif
+	}
+	Directory(const Path& path): Directory(path.c_str()) {}
+	Directory() {
+		#ifdef _WIN32
+		handle = INVALID_HANDLE_VALUE;
+		#else
+		dir = nullptr;
+		#endif
+	}
+	Directory(const Directory&) = delete;
+	Directory(Directory&& directory) {
+		#ifdef _WIN32
+		handle = directory.handle;
+		directory.handle = INVALID_HANDLE_VALUE;
+		#else
+		dir = directory.dir;
+		directory.dir = nullptr;
+		#endif
+	}
+	~Directory() {
+		#ifdef _WIN32
+		if (handle != INVALID_HANDLE_VALUE) {
+			FindClose(handle);
+		}
+		#else
+		if (dir) {
+			closedir(dir);
+		}
+		#endif
+	}
+	Directory& operator =(const Directory&) = delete;
+	Directory& operator =(Directory&& directory) {
+		#ifdef _WIN32
+		std::swap(handle, directory.handle);
+		#else
+		std::swap(dir, directory.dir);
+		#endif
+		return *this;
+	}
+	explicit operator bool() const {
+		#ifdef _WIN32
+		return handle != INVALID_HANDLE_VALUE;
+		#else
+		return dir != nullptr;
+		#endif
+	}
+	class Iterator {
+		#ifdef _WIN32
+		HANDLE handle;
+		LPWIN32_FIND_DATA find_data;
+		#else
+		DIR* dir;
+		struct dirent *ent;
+		#endif
+	public:
+		#ifdef _WIN32
+		Iterator(HANDLE handle, LPWIN32_FIND_DATA find_data): handle(handle), find_data(find_data) {}
+		#else
+		Iterator(DIR* dir, struct dirent* ent): dir(dir), ent(ent) {}
+		#endif
+		bool operator !=(const Iterator& iterator) const {
+			#ifdef _WIN32
+			return find_data != iterator.find_data;
+			#else
+			return ent != iterator.ent;
+			#endif
+		}
+		const char* operator *() const {
+			#ifdef _WIN32
+			return find_data->cFileName;
+			#else
+			return ent->d_name;
+			#endif
+		}
+		Iterator& operator ++() {
+			#ifdef _WIN32
+			if (!FindNextFile(handle, find_data)) {
+				find_data = nullptr;
+			}
+			#else
+			ent = readdir(dir);
+			#endif
+			return *this;
+		}
+	};
+	Iterator begin() const {
+		#ifdef _WIN32
+		if (handle != INVALID_HANDLE_VALUE) {
+			return Iterator(handle, &find_data);
+		}
+		else {
+			return Iterator(handle, nullptr);
+		}
+		#else
+		if (dir != nullptr) {
+			return Iterator(dir, readdir(dir));
+		}
+		else {
+			return Iterator(dir, nullptr);
+		}
+		#endif
+	}
+	Iterator end() const {
+		#ifdef _WIN32
+		return Iterator(handle, nullptr);
+		#else
+		return Iterator(dir, nullptr);
+		#endif
 	}
 };
 

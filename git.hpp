@@ -1077,7 +1077,7 @@ public:
 			return Object(Inflate::zlib_decompress(reader));
 		}
 		Path pack_dir = root / "objects" / "pack";
-		for (auto pack: pack_dir.children()) {
+		for (auto pack: Directory(pack_dir)) {
 			Path pack_path = pack_dir / pack;
 			if (pack_path.extension() == "pack") {
 				Path index_path = pack_path.with_extension("idx");
