@@ -171,6 +171,11 @@ public:
 			}
 		}
 	}
+	template <class... A> void set_selection(A&&... a) {
+		clear();
+		emplace_back(std::forward<A>(a)...);
+		last_selection = 0;
+	}
 };
 
 struct RenderedLine {
@@ -393,9 +398,7 @@ public:
 		return std::min(index, max_index);
 	}
 	void set_cursor(std::size_t column, std::size_t line) {
-		selections.clear();
-		selections.emplace_back(get_index(column, line));
-		selections.last_selection = 0;
+		selections.set_selection(get_index(column, line));
 	}
 	void toggle_cursor(std::size_t column, std::size_t line) {
 		const std::size_t cursor = get_index(column, line);
@@ -531,9 +534,7 @@ public:
 		selections.collapse(false);
 	}
 	void select_all() {
-		selections.clear();
-		selections.emplace_back(0, buffer.get_size() - 1);
-		selections.last_selection = 0;
+		selections.set_selection(0, buffer.get_size() - 1);
 	}
 	const Theme& get_theme() const {
 		return prism::get_theme("one-dark");
