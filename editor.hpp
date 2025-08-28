@@ -152,6 +152,25 @@ public:
 	Selections(): last_selection(0) {
 		emplace_back(0);
 	}
+	void collapse(bool reverse_direction) {
+		for (std::size_t i = 1; i < size(); ++i) {
+			Selection& lhs = operator [](i - 1);
+			Selection& rhs = operator [](i);
+			if (lhs.head == rhs.head || lhs.max() > rhs.min()) {
+				if (reverse_direction) {
+					lhs = Selection(rhs.max(), lhs.min());
+				}
+				else {
+					lhs = Selection(lhs.min(), rhs.max());
+				}
+				if (last_selection >= i) {
+					--last_selection;
+				}
+				erase(begin() + i);
+				--i;
+			}
+		}
+	}
 };
 
 struct RenderedLine {
@@ -241,23 +260,6 @@ class Editor {
 		const std::size_t codepoints = buffer.get_info_for_line_start(line + 1).codepoints + column;
 		const std::size_t max_codepoints = buffer.get_info_for_line_end(line + 1).codepoints;
 		return buffer.get_info_for_codepoints(std::min(codepoints, max_codepoints)).bytes;
-	}
-	void collapse_selections(bool reverse_direction) {
-		for (std::size_t i = 1; i < selections.size(); ++i) {
-			if (selections[i-1].head == selections[i].head || selections[i-1].max() > selections[i].min()) {
-				if (reverse_direction) {
-					selections[i-1] = Selection(selections[i].max(), selections[i-1].min());
-				}
-				else {
-					selections[i-1] = Selection(selections[i-1].min(), selections[i].max());
-				}
-				if (selections.last_selection >= i) {
-					--selections.last_selection;
-				}
-				selections.erase(selections.begin() + i);
-				--i;
-			}
-		}
 	}
 	class SelectionIterator {
 	public:
@@ -371,7 +373,7 @@ public:
 			}
 			selection.delete_text();
 		});
-		collapse_selections(true);
+		selections.collapse(true);
 	}
 	void delete_forward() {
 		for_each_selection([&](SelectionIterator& selection) {
@@ -380,7 +382,7 @@ public:
 			}
 			selection.delete_text();
 		});
-		collapse_selections(false);
+		selections.collapse(false);
 	}
 	std::size_t get_index(std::size_t column, std::size_t line) const {
 		if (line > get_total_lines() - 1) {
@@ -424,7 +426,7 @@ public:
 	void extend_selection(std::size_t column, std::size_t line) {
 		Selection& selection = selections[selections.last_selection];
 		selection.head = get_index(column, line);
-		collapse_selections(selection.is_reversed());
+		selections.collapse(selection.is_reversed());
 	}
 	void move_left(bool extend_selection = false) {
 		for (Selection& selection: selections) {
@@ -437,7 +439,7 @@ public:
 				selection.tail = selection.head;
 			}
 		}
-		collapse_selections(true);
+		selections.collapse(true);
 	}
 	void move_right(bool extend_selection = false) {
 		for (Selection& selection: selections) {
@@ -450,7 +452,7 @@ public:
 				selection.tail = selection.head;
 			}
 		}
-		collapse_selections(false);
+		selections.collapse(false);
 	}
 	void move_up(bool extend_selection = false) {
 		for (Selection& selection: selections) {
@@ -463,7 +465,7 @@ public:
 				selection.tail = selection.head;
 			}
 		}
-		collapse_selections(true);
+		selections.collapse(true);
 	}
 	void move_down(bool extend_selection = false) {
 		for (Selection& selection: selections) {
@@ -476,7 +478,7 @@ public:
 				selection.tail = selection.head;
 			}
 		}
-		collapse_selections(false);
+		selections.collapse(false);
 	}
 	void move_to_beginning_of_word(bool extend_selection = false) {
 		for (Selection& selection: selections) {
@@ -491,7 +493,7 @@ public:
 				selection.tail = selection.head;
 			}
 		}
-		collapse_selections(true);
+		selections.collapse(true);
 	}
 	void move_to_end_of_word(bool extend_selection = false) {
 		for (Selection& selection: selections) {
@@ -506,7 +508,7 @@ public:
 				selection.tail = selection.head;
 			}
 		}
-		collapse_selections(false);
+		selections.collapse(false);
 	}
 	void move_to_beginning_of_line(bool extend_selection = false) {
 		for (Selection& selection: selections) {
@@ -516,7 +518,7 @@ public:
 				selection.tail = selection.head;
 			}
 		}
-		collapse_selections(true);
+		selections.collapse(true);
 	}
 	void move_to_end_of_line(bool extend_selection = false) {
 		for (Selection& selection: selections) {
@@ -526,7 +528,7 @@ public:
 				selection.tail = selection.head;
 			}
 		}
-		collapse_selections(false);
+		selections.collapse(false);
 	}
 	void select_all() {
 		selections.clear();
