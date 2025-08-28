@@ -202,7 +202,7 @@ class Editor {
 	static const char* get_file_name(const char* path) {
 		const char* file_name = path;
 		for (const char* i = path; *i != '\0'; ++i) {
-			if (is_path_separator(*i)) {
+			if (Path::is_separator(*i)) {
 				file_name = i + 1;
 			}
 		}

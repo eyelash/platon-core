@@ -552,12 +552,6 @@ public:
 	template <class T> T to() const {
 		return T(data_, end_);
 	};
-	std::string to_string() const {
-		return std::string(data_, end_);
-	}
-	std::vector<char> to_vector() const {
-		return std::vector<char>(data_, end_);
-	}
 	bool parse(const char* s) {
 		const char* d = data_;
 		while (*s != '\0') {
@@ -622,15 +616,6 @@ public:
 	Parser line() {
 		return parse_until('\n');
 	}
-};
-
-enum {
-	OBJECT_TYPE_COMMIT = 1,
-	OBJECT_TYPE_TREE = 2,
-	OBJECT_TYPE_BLOB = 3,
-	OBJECT_TYPE_TAG = 4,
-	OBJECT_TYPE_OFS_DELTA = 6,
-	OBJECT_TYPE_REF_DELTA = 7
 };
 
 class Commit {

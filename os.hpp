@@ -14,100 +14,6 @@
 #include <string>
 #include <algorithm>
 
-class DirectoryIterator {
-	#ifdef _WIN32
-	#else
-	DIR *directory;
-	dirent *entry;
-	#endif
-public:
-	DirectoryIterator() {
-		#ifdef _WIN32
-		#else
-		directory = nullptr;
-		entry = nullptr;
-		#endif
-	}
-	DirectoryIterator(const char* path) {
-		#ifdef _WIN32
-		#else
-		directory = opendir(path);
-		if (directory) {
-			entry = readdir(directory);
-		}
-		else {
-			entry = nullptr;
-		}
-		#endif
-	}
-	DirectoryIterator(const DirectoryIterator&) = delete;
-	DirectoryIterator(DirectoryIterator&& iterator) {
-		#ifdef _WIN32
-		#else
-		directory = iterator.directory;
-		entry = iterator.entry;
-		iterator.directory = nullptr;
-		iterator.entry = nullptr;
-		#endif
-	}
-	~DirectoryIterator() {
-		#ifdef _WIN32
-		#else
-		if (directory) {
-			closedir(directory);
-		}
-		#endif
-	}
-	DirectoryIterator& operator =(const DirectoryIterator&) = delete;
-	DirectoryIterator& operator =(DirectoryIterator&& iterator) {
-		#ifdef _WIN32
-		#else
-		std::swap(directory, iterator.directory);
-		std::swap(entry, iterator.entry);
-		#endif
-		return *this;
-	}
-	bool operator !=(const DirectoryIterator& iterator) const {
-		#ifdef _WIN32
-		#else
-		return entry != iterator.entry;
-		#endif
-	}
-	const char* operator *() const {
-		#ifdef _WIN32
-		#else
-		return entry->d_name;
-		#endif
-	}
-	DirectoryIterator& operator ++() {
-		#ifdef _WIN32
-		#else
-		entry = readdir(directory);
-		#endif
-		return *this;
-	}
-};
-
-class Directory0 {
-	const char* path;
-public:
-	constexpr Directory0(const char* path): path(path) {}
-	DirectoryIterator begin() const {
-		return DirectoryIterator(path);
-	}
-	DirectoryIterator end() const {
-		return DirectoryIterator();
-	}
-};
-
-constexpr bool is_path_separator(char c) {
-	#ifdef _WIN32
-	return c == '\\' || c == '/';
-	#else
-	return c == '/';
-	#endif
-}
-
 class Path {
 	std::string path;
 public:
@@ -200,9 +106,6 @@ public:
 			}
 		}
 		return Path();
-	}
-	Directory0 children() const {
-		return Directory0(path.c_str());
 	}
 	Path& operator /=(const char* s) {
 		path += separator;
@@ -324,7 +227,7 @@ public:
 			return *this;
 		}
 	};
-	Iterator begin() const {
+	Iterator begin() {
 		#ifdef _WIN32
 		if (handle != INVALID_HANDLE_VALUE) {
 			return Iterator(handle, &find_data);
@@ -341,7 +244,7 @@ public:
 		}
 		#endif
 	}
-	Iterator end() const {
+	Iterator end() {
 		#ifdef _WIN32
 		return Iterator(handle, nullptr);
 		#else
