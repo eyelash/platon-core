@@ -166,56 +166,138 @@ public:
 	}
 };
 
-class BitReader {
-	const char* data;
-	const char* end;
-	int bit_position;
+class ByteReader {
+	const char* data_;
+	const char* end_;
 public:
-	BitReader(const char* data, const char* end): data(data), end(end), bit_position(0) {}
-	BitReader(const Mmap& mmap): BitReader(mmap.begin(), mmap.end()) {}
-	BitReader(const Mmap& mmap, std::size_t offset): BitReader(mmap.begin() + offset, mmap.end()) {}
-	BitReader(const std::vector<char>& v): BitReader(v.data(), v.data() + v.size()) {}
-	explicit operator bool() const {
-		return data != end;
+	constexpr ByteReader(): data_(nullptr), end_(nullptr) {}
+	constexpr ByteReader(const char* data_, const char* end_): data_(data_), end_(end_) {}
+	ByteReader(const Mmap& mmap): ByteReader(mmap.begin(), mmap.end()) {}
+	ByteReader(const Mmap& mmap, std::size_t offset): ByteReader(mmap.begin() + offset, mmap.end()) {}
+	ByteReader(const std::vector<char>& v): ByteReader(v.data(), v.data() + v.size()) {}
+	ByteReader(const char* s): data_(s), end_(s) {
+		while (*end_ != '\0') {
+			++end_;
+		}
+	}
+	explicit constexpr operator bool() const {
+		return data_ != end_;
+	}
+	template <class T> T to() const {
+		return T(data_, end_);
+	};
+	bool parse(const char* s) {
+		const char* d = data_;
+		while (*s != '\0') {
+			if (d == end_ || *d != *s) {
+				return false;
+			}
+			++d;
+			++s;
+		}
+		data_ = d;
+		return true;
+	}
+	template <class T> T parse_number() {
+		T number = 0;
+		while (data_ != end_ && *data_ >= '0' && *data_ <= '9') {
+			number = number * 10 + (*data_ - '0');
+			++data_;
+		}
+		return number;
+	}
+	static constexpr bool is_hex_char(char c) {
+		return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'a' && c <= 'f');
+	}
+	template <int bits> bool parse_hash(Hash<bits>& hash) {
+		for (int i = 0; i < bits / 8 * 2; ++i) {
+			if (data_ + i == end_ || !is_hex_char(data_[i])) {
+				return false;
+			}
+		}
+		for (int i = 0; i < bits / 8; ++i) {
+			hash.data[i] = Hash<bits>::from_hex(data_);
+			data_ += 2;
+		}
+		return true;
+	}
+	template <int bits = 160> Hash<bits> parse_hash() {
+		Hash<bits> hash;
+		parse_hash(hash);
+		return hash;
+	}
+	template <int bits> bool parse_hash_binary(Hash<bits>& hash) {
+		if (bits / 8 > end_ - data_) {
+			return false;
+		}
+		for (int i = 0; i < bits / 8; ++i) {
+			hash.data[i] = *data_;
+			data_ += 1;
+		}
+		return true;
+	}
+	ByteReader parse_until(char delimiter) {
+		const char* d = data_;
+		while (data_ != end_ && *data_ != delimiter) {
+			++data_;
+		}
+		const char* e = data_;
+		if (data_ != end_ && *data_ == delimiter) {
+			++data_;
+		}
+		return ByteReader(d, e);
+	}
+	ByteReader line() {
+		return parse_until('\n');
 	}
 	unsigned char get() const {
-		return *data;
+		return *data_;
 	}
 	std::size_t get_position(const char* start) const {
-		return data - start;
-	}
-	int read_bit() {
-		int result = get() >> bit_position;
-		if (++bit_position == 8) {
-			++data;
-			bit_position = 0;
-		}
-		return result & 1;
-	}
-	int read_int(int bits) {
-		int result = 0;
-		for (int i = 0; i < bits; ++i)
-			result |= read_bit() << i;
-		return result;
-	}
-	void skip_to_next_byte() {
-		if (bit_position > 0) {
-			++data;
-			bit_position = 0;
-		}
+		return data_ - start;
 	}
 	char read_aligned_byte() {
-		char result = *data;
-		++data;
+		char result = *data_;
+		++data_;
 		return result;
 	}
 	template <class T> T read_aligned() {
 		T result = 0;
 		for (std::size_t i = 0; i < sizeof(T); ++i) {
 			result |= get() << ((sizeof(T) - 1 - i) * 8);
-			++data;
+			++data_;
 		}
 		return result;
+	}
+	void advance(int bytes) {
+		data_ += bytes;
+	}
+};
+
+class BitReader: public ByteReader {
+	int bit_position;
+public:
+	BitReader(const char* data, const char* end): ByteReader(data, end), bit_position(0) {}
+	BitReader(const Mmap& mmap): BitReader(mmap.begin(), mmap.end()) {}
+	BitReader(const Mmap& mmap, std::size_t offset): BitReader(mmap.begin() + offset, mmap.end()) {}
+	BitReader(const std::vector<char>& v): BitReader(v.data(), v.data() + v.size()) {}
+	int read_bit() {
+		int result = get() >> bit_position;
+		++bit_position;
+		advance(bit_position / 8);
+		bit_position = bit_position % 8;
+		return result & 1;
+	}
+	int read_bits(int bits) {
+		int result = 0;
+		for (int i = 0; i < bits; ++i)
+			result |= read_bit() << i;
+		return result;
+	}
+	void skip_to_next_byte() {
+		bit_position += 7;
+		advance(bit_position / 8);
+		bit_position = 0;
 	}
 };
 
@@ -404,7 +486,7 @@ class Inflate {
 		TreeBuilder tree_builder;
 		static constexpr int values[] = {16, 17, 18, 0, 8, 7, 9, 6, 10, 5, 11, 4, 12, 3, 13, 2, 14, 1, 15};
 		for (int i = 0; i < codes; ++i) {
-			tree_builder.set_bits(values[i], reader.read_int(3));
+			tree_builder.set_bits(values[i], reader.read_bits(3));
 		}
 		tree_builder.build_tree(tree);
 	}
@@ -427,17 +509,17 @@ class Inflate {
 				set_bits(value);
 			}
 			else if (value == 16) {
-				const int end = i + 3 + reader.read_int(2);
+				const int end = i + 3 + reader.read_bits(2);
 				while (i < end) {
 					set_bits(previous_length);
 				}
 			}
 			else if (value == 17) {
-				i += 3 + reader.read_int(3);
+				i += 3 + reader.read_bits(3);
 				previous_length = 0;
 			}
 			else if (value == 18) {
-				i += 11 + reader.read_int(7);
+				i += 11 + reader.read_bits(7);
 				previous_length = 0;
 			}
 		}
@@ -451,7 +533,7 @@ class Inflate {
 		if (code < 285) {
 			code = code - 261;
 			const int extra_bits = code / 4;
-			return 3 + ((4 + code % 4) << extra_bits) + reader.read_int(extra_bits);
+			return 3 + ((4 + code % 4) << extra_bits) + reader.read_bits(extra_bits);
 		}
 		return 258;
 	}
@@ -461,18 +543,18 @@ class Inflate {
 		}
 		code = code - 2;
 		const int extra_bits = code / 2;
-		return 1 + ((2 + code % 2) << extra_bits) + reader.read_int(extra_bits);
+		return 1 + ((2 + code % 2) << extra_bits) + reader.read_bits(extra_bits);
 	}
 public:
 	static std::vector<char> inflate(BitReader& reader) {
 		std::vector<char> result;
 		while (true) {
 			const int bfinal = reader.read_bit();
-			const int btype = reader.read_int(2);
+			const int btype = reader.read_bits(2);
 			if (btype == 0) {
 				reader.skip_to_next_byte();
-				const int len = reader.read_int(16);
-				const int nlen = reader.read_int(16);
+				const int len = reader.read_bits(16);
+				const int nlen = reader.read_bits(16);
 				for (int i = 0; reader && i < len; ++i) {
 					result.push_back(reader.read_aligned_byte());
 				}
@@ -485,9 +567,9 @@ public:
 					build_fixed_distance_tree(&distance_tree);
 				}
 				else if (btype == 2) {
-					const int hlit = reader.read_int(5);
-					const int hdist = reader.read_int(5);
-					const int hclen = reader.read_int(4);
+					const int hlit = reader.read_bits(5);
+					const int hdist = reader.read_bits(5);
+					const int hclen = reader.read_bits(4);
 					Tree length_tree;
 					build_length_tree(reader, hclen + 4, &length_tree);
 					build_dynamic_trees(reader, length_tree, hlit + 257, hdist + 1, &literal_tree, &distance_tree);
@@ -515,11 +597,11 @@ public:
 	}
 	static std::vector<char> zlib_decompress(BitReader& reader) {
 		// https://datatracker.ietf.org/doc/html/rfc1950
-		const int cm = reader.read_int(4);
-		const int cinfo = reader.read_int(4);
-		const int fcheck = reader.read_int(5);
+		const int cm = reader.read_bits(4);
+		const int cinfo = reader.read_bits(4);
+		const int fcheck = reader.read_bits(5);
 		const int fdict = reader.read_bit();
-		const int flevel = reader.read_int(2);
+		const int flevel = reader.read_bits(2);
 		if (fdict) return {};
 		std::vector<char> result = inflate(reader);
 		reader.skip_to_next_byte();
@@ -625,7 +707,7 @@ class Commit {
 		std::uint64_t time_;
 		std::string timezone_;
 	public:
-		void parse(Parser& parser) {
+		void parse(ByteReader& parser) {
 			name_ = parser.parse_until('<').to<std::string>();
 			if (name_.size() > 0 && name_.back() == ' ')
 				name_.pop_back();
@@ -654,9 +736,9 @@ class Commit {
 	User committer_;
 	std::string message_;
 public:
-	Commit(Parser parser) {
+	Commit(ByteReader parser) {
 		while (parser) {
-			Parser line = parser.line();
+			ByteReader line = parser.line();
 			if (!line) {
 				break;
 			}
@@ -694,7 +776,7 @@ class Tree {
 		std::string name_;
 		Hash<160> hash_;
 	public:
-		Entry(Parser& parser) {
+		Entry(ByteReader& parser) {
 			mode_ = parser.parse_until(' ').to<std::string>();
 			name_ = parser.parse_until('\0').to<std::string>();
 			parser.parse_hash_binary(hash_);
@@ -717,7 +799,7 @@ class Tree {
 	};
 	std::vector<Entry> entries_;
 public:
-	Tree(Parser parser) {
+	Tree(ByteReader parser) {
 		while (parser) {
 			entries_.emplace_back(parser);
 		}
@@ -749,8 +831,8 @@ public:
 	Object(std::uint8_t type_): type_(type_) {}
 	Object(std::uint8_t type_, std::vector<char>&& data_): type_(type_), data_(std::move(data_)) {}
 	Object(const std::vector<char>& data_) {
-		Parser parser(data_);
-		Parser header = parser.parse_until('\0');
+		ByteReader parser(data_);
+		ByteReader header = parser.parse_until('\0');
 		if (header.parse("commit "))
 			type_ = 1;
 		else if (header.parse("tree "))
@@ -789,10 +871,10 @@ public:
 		return type_ == 3;
 	}
 	Commit get_commit() const {
-		return Commit(Parser(data_));
+		return Commit(ByteReader(data_));
 	}
 	Tree get_tree() const {
-		return Tree(Parser(data_));
+		return Tree(ByteReader(data_));
 	}
 	const std::vector<char>& get_blob() const {
 		return data_;
@@ -1024,7 +1106,7 @@ class Repository {
 			}
 			Mmap mmap(p);
 			if (mmap) {
-				Parser parser(mmap);
+				ByteReader parser(mmap);
 				if (parser.parse("gitdir: ")) {
 					p = path / parser.line().to<std::string>();
 					continue;
@@ -1040,7 +1122,7 @@ public:
 		Path p = root / "HEAD";
 		while (true) {
 			Mmap mmap(p);
-			Parser parser(mmap);
+			ByteReader parser(mmap);
 			if (parser.parse("ref: ")) {
 				p = root / parser.line().to<std::string>();
 				continue;
@@ -1089,7 +1171,7 @@ public:
 		if (!root) {
 			return Object();
 		}
-		Parser parser(rev);
+		ByteReader parser(rev);
 		Hash<160> hash;
 		if (parser.parse_hash(hash)) {
 			if (Object object = find_object(hash, root)) {
@@ -1110,7 +1192,7 @@ public:
 				continue;
 			}
 			while (true) {
-				Parser parser(mmap);
+				ByteReader parser(mmap);
 				if (parser.parse("ref: ")) {
 					mmap = Mmap(root / parser.line().to<std::string>());
 					if (!mmap) {
