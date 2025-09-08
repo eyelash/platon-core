@@ -960,20 +960,24 @@ class PackfileIndex {
 			return IndexIterator<Entries>(this, size_);
 		}
 	};
-	bool is_v2() const {
-		Parser magic(data.data(), data.data() + 4);
-		const std::uint32_t version = read_word(data.data() + 4);
-		return magic.parse("\377tOc") && version == 2;
+	std::uint32_t version() const {
+		ByteReader magic(data.data(), data.data() + 4);
+		if (magic.parse("\377tOc")) {
+			return read_word(data.data() + 4);
+		}
+		else {
+			return 1;
+		}
 	}
 	Fanout fanout() const {
-		if (is_v2())
+		if (version() == 2)
 			return Fanout(data.data() + 8);
 		else
 			return Fanout(data.data());
 	}
 	Entries entries(const Fanout& fanout) const {
 		std::size_t size = fanout[255];
-		if (is_v2()) {
+		if (version() == 2) {
 			const char* hashes = data.data() + 8 + 256 * 4;
 			const char* offsets = hashes + 20 * size + 4 * size;
 			return Entries(hashes, 20, offsets, 4, size);
