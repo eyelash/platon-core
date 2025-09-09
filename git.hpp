@@ -971,9 +971,19 @@ public:
 		if (type >= 1 && type <= 4) {
 			return Object(type, Inflate::zlib_decompress(reader));
 		}
-		else if (type == 6) { // offset delta
-			std::uint32_t offset = read_offset(reader);
-			Object base = read_object(position - offset);
+		else if (type == 6 || type == 7) { // offset delta or ref delta
+			Object base;
+			if (type == 6) {
+				// offset delta
+				const std::uint32_t offset = read_offset(reader);
+				base = read_object(position - offset);
+			}
+			else {
+				// ref delta
+				Hash<160> hash;
+				reader.parse_hash_binary(hash);
+				// TODO
+			}
 			auto delta = Inflate::zlib_decompress(reader);
 			BitReader delta_reader(delta);
 			std::uint32_t base_size = read_size(delta_reader);
@@ -1005,7 +1015,7 @@ public:
 			return object;
 		}
 		else {
-			// ref delta or invalid
+			// invalid type
 			return Object();
 		}
 	}
