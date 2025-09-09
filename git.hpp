@@ -615,91 +615,6 @@ public:
 
 namespace git {
 
-class Parser {
-	const char* data_;
-	const char* end_;
-public:
-	constexpr Parser(): data_(nullptr), end_(nullptr) {}
-	constexpr Parser(const char* data_, const char* end_): data_(data_), end_(end_) {}
-	Parser(const Mmap& mmap): data_(mmap.begin()), end_(mmap.end()) {}
-	Parser(const std::vector<char>& v): data_(v.data()), end_(v.data() + v.size()) {}
-	Parser(const char* s): data_(s), end_(s) {
-		while (*end_ != '\0') {
-			++end_;
-		}
-	}
-	explicit constexpr operator bool() const {
-		return data_ != end_;
-	}
-	template <class T> T to() const {
-		return T(data_, end_);
-	};
-	bool parse(const char* s) {
-		const char* d = data_;
-		while (*s != '\0') {
-			if (d == end_ || *d != *s) {
-				return false;
-			}
-			++d;
-			++s;
-		}
-		data_ = d;
-		return true;
-	}
-	template <class T> T parse_number() {
-		T number = 0;
-		while (data_ != end_ && *data_ >= '0' && *data_ <= '9') {
-			number = number * 10 + (*data_ - '0');
-			++data_;
-		}
-		return number;
-	}
-	static constexpr bool is_hex_char(char c) {
-		return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'a' && c <= 'f');
-	}
-	template <int bits> bool parse_hash(Hash<bits>& hash) {
-		for (int i = 0; i < bits / 8 * 2; ++i) {
-			if (data_ + i == end_ || !is_hex_char(data_[i])) {
-				return false;
-			}
-		}
-		for (int i = 0; i < bits / 8; ++i) {
-			hash.data[i] = Hash<bits>::from_hex(data_);
-			data_ += 2;
-		}
-		return true;
-	}
-	template <int bits = 160> Hash<bits> parse_hash() {
-		Hash<bits> hash;
-		parse_hash(hash);
-		return hash;
-	}
-	template <int bits> bool parse_hash_binary(Hash<bits>& hash) {
-		if (bits / 8 > end_ - data_) {
-			return false;
-		}
-		for (int i = 0; i < bits / 8; ++i) {
-			hash.data[i] = *data_;
-			data_ += 1;
-		}
-		return true;
-	}
-	Parser parse_until(char delimiter) {
-		const char* d = data_;
-		while (data_ != end_ && *data_ != delimiter) {
-			++data_;
-		}
-		const char* e = data_;
-		if (data_ != end_ && *data_ == delimiter) {
-			++data_;
-		}
-		return Parser(d, e);
-	}
-	Parser line() {
-		return parse_until('\n');
-	}
-};
-
 class Commit {
 	class User {
 		std::string name_;
@@ -707,15 +622,15 @@ class Commit {
 		std::uint64_t time_;
 		std::string timezone_;
 	public:
-		void parse(ByteReader& parser) {
-			name_ = parser.parse_until('<').to<std::string>();
+		void parse(ByteReader& reader) {
+			name_ = reader.parse_until('<').to<std::string>();
 			if (name_.size() > 0 && name_.back() == ' ')
 				name_.pop_back();
-			email_ = parser.parse_until('>').to<std::string>();
-			parser.parse(" ");
-			time_ = parser.parse_number<std::uint64_t>();
-			parser.parse(" ");
-			timezone_ = parser.to<std::string>();
+			email_ = reader.parse_until('>').to<std::string>();
+			reader.parse(" ");
+			time_ = reader.parse_number<std::uint64_t>();
+			reader.parse(" ");
+			timezone_ = reader.to<std::string>();
 		}
 		const std::string& name() const {
 			return name_;
@@ -736,9 +651,9 @@ class Commit {
 	User committer_;
 	std::string message_;
 public:
-	Commit(ByteReader parser) {
-		while (parser) {
-			ByteReader line = parser.line();
+	Commit(ByteReader reader) {
+		while (reader) {
+			ByteReader line = reader.line();
 			if (!line) {
 				break;
 			}
@@ -751,7 +666,7 @@ public:
 			else if (line.parse("committer "))
 				committer_.parse(line);
 		}
-		message_ = parser.to<std::string>();
+		message_ = reader.to<std::string>();
 	}
 	const Hash<160>& tree() const {
 		return tree_;
@@ -776,10 +691,10 @@ class Tree {
 		std::string name_;
 		Hash<160> hash_;
 	public:
-		Entry(ByteReader& parser) {
-			mode_ = parser.parse_until(' ').to<std::string>();
-			name_ = parser.parse_until('\0').to<std::string>();
-			parser.parse_hash_binary(hash_);
+		Entry(ByteReader& reader) {
+			mode_ = reader.parse_until(' ').to<std::string>();
+			name_ = reader.parse_until('\0').to<std::string>();
+			reader.parse_hash_binary(hash_);
 		}
 		bool operator <(const char* name) const {
 			return name_ < name;
@@ -799,9 +714,9 @@ class Tree {
 	};
 	std::vector<Entry> entries_;
 public:
-	Tree(ByteReader parser) {
-		while (parser) {
-			entries_.emplace_back(parser);
+	Tree(ByteReader reader) {
+		while (reader) {
+			entries_.emplace_back(reader);
 		}
 		//std::sort(entries_.begin(), entries_.end());
 	}
@@ -831,8 +746,8 @@ public:
 	Object(std::uint8_t type_): type_(type_) {}
 	Object(std::uint8_t type_, std::vector<char>&& data_): type_(type_), data_(std::move(data_)) {}
 	Object(const std::vector<char>& data_) {
-		ByteReader parser(data_);
-		ByteReader header = parser.parse_until('\0');
+		ByteReader reader(data_);
+		ByteReader header = reader.parse_until('\0');
 		if (header.parse("commit "))
 			type_ = 1;
 		else if (header.parse("tree "))
@@ -841,7 +756,7 @@ public:
 			type_ = 3;
 		else
 			type_ = 0;
-		this->data_ = parser.to<std::vector<char>>();
+		this->data_ = reader.to<std::vector<char>>();
 	}
 	void push_back(char d) {
 		data_.push_back(d);
@@ -961,9 +876,9 @@ class PackfileIndex {
 		}
 	};
 	std::uint32_t version() const {
-		ByteReader magic(data.data(), data.data() + 4);
-		if (magic.parse("\377tOc")) {
-			return read_word(data.data() + 4);
+		ByteReader reader(data);
+		if (reader.parse("\377tOc")) {
+			return reader.read_aligned<std::uint32_t>();
 		}
 		else {
 			return 1;
@@ -976,7 +891,7 @@ class PackfileIndex {
 			return Fanout(data.data());
 	}
 	Entries entries(const Fanout& fanout) const {
-		std::size_t size = fanout[255];
+		const std::size_t size = fanout[255];
 		if (version() == 2) {
 			const char* hashes = data.data() + 8 + 256 * 4;
 			const char* offsets = hashes + 20 * size + 4 * size;
@@ -985,7 +900,7 @@ class PackfileIndex {
 		else {
 			const char* offsets = data.data() + 256 * 4;
 			const char* hashes = offsets + 4;
-			std::size_t stride = 4 + 20;
+			const std::size_t stride = 4 + 20;
 			return Entries(hashes, 24, offsets, 24, size);
 		}
 	}
@@ -1149,7 +1064,7 @@ class Index {
 public:
 	Index(const Path& path) {
 		Mmap index(path);
-		BitReader reader(index);
+		ByteReader reader(index);
 		reader.read_aligned_byte() == 'D';
 		reader.read_aligned_byte() == 'I';
 		reader.read_aligned_byte() == 'R';
@@ -1176,9 +1091,9 @@ class Repository {
 			}
 			Mmap mmap(p);
 			if (mmap) {
-				ByteReader parser(mmap);
-				if (parser.parse("gitdir: ")) {
-					p = path / parser.line().to<std::string>();
+				ByteReader reader(mmap);
+				if (reader.parse("gitdir: ")) {
+					p = path / reader.line().to<std::string>();
 					continue;
 				}
 			}
@@ -1192,12 +1107,12 @@ public:
 		Path p = root / "HEAD";
 		while (true) {
 			Mmap mmap(p);
-			ByteReader parser(mmap);
-			if (parser.parse("ref: ")) {
-				p = root / parser.line().to<std::string>();
+			ByteReader reader(mmap);
+			if (reader.parse("ref: ")) {
+				p = root / reader.line().to<std::string>();
 				continue;
 			}
-			return parser.parse_hash();
+			return reader.parse_hash();
 		}
 	}
 	Object find_object(const Hash<160>& hash, const Path& root) const {
@@ -1241,9 +1156,9 @@ public:
 		if (!root) {
 			return Object();
 		}
-		ByteReader parser(rev);
+		ByteReader reader(rev);
 		Hash<160> hash;
-		if (parser.parse_hash(hash)) {
+		if (reader.parse_hash(hash)) {
 			if (Object object = find_object(hash, root)) {
 				return object;
 			}
@@ -1262,16 +1177,16 @@ public:
 				continue;
 			}
 			while (true) {
-				ByteReader parser(mmap);
-				if (parser.parse("ref: ")) {
-					mmap = Mmap(root / parser.line().to<std::string>());
+				ByteReader reader(mmap);
+				if (reader.parse("ref: ")) {
+					mmap = Mmap(root / reader.line().to<std::string>());
 					if (!mmap) {
 						return Object();
 					}
 					continue;
 				}
 				Hash<160> hash;
-				if (!parser.parse_hash(hash)) {
+				if (!reader.parse_hash(hash)) {
 					return Object();
 				}
 				return find_object(hash, root);
