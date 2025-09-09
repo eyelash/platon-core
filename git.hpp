@@ -1100,6 +1100,72 @@ public:
 	}
 };
 
+class Index {
+	class Entry {
+		std::string name_;
+		Hash<160> hash_;
+	public:
+		Entry(ByteReader& reader, std::uint32_t version, const char* entry_start) {
+			const std::uint32_t metadata_changed_seconds = reader.read_aligned<std::uint32_t>();
+			const std::uint32_t metadata_changed_nanoseconds = reader.read_aligned<std::uint32_t>();
+			const std::uint32_t data_changed_seconds = reader.read_aligned<std::uint32_t>();
+			const std::uint32_t data_changed_nanoseconds = reader.read_aligned<std::uint32_t>();
+			const std::uint32_t dev = reader.read_aligned<std::uint32_t>();
+			const std::uint32_t ino = reader.read_aligned<std::uint32_t>();
+			const std::uint32_t mode = reader.read_aligned<std::uint32_t>();
+			const std::uint32_t uid = reader.read_aligned<std::uint32_t>();
+			const std::uint32_t gid = reader.read_aligned<std::uint32_t>();
+			const std::uint32_t file_size = reader.read_aligned<std::uint32_t>();
+			reader.parse_hash_binary(hash_);
+			const std::uint16_t flags = reader.read_aligned<std::uint16_t>();
+			const bool extended = (flags >> 14) & 1;
+			const std::uint16_t name_length = flags & 0xFFF;
+			if (version >= 3 && extended) {
+				const std::uint16_t extended_flags = reader.read_aligned<std::uint16_t>();
+			}
+			if (version < 4) {
+				name_ = reader.parse_until('\0').to<std::string>();
+				while (reader.get_position(entry_start) % 8 != 0)
+					reader.read_aligned_byte();
+			}
+			else {
+				// TODO
+			}
+		}
+		bool operator <(const char* name) const {
+			return name_ < name;
+		}
+		bool operator <(const Entry& entry) const {
+			return name_ < entry.name_;
+		}
+		const std::string& name() const {
+			return name_;
+		}
+		const Hash<160>& hash() const {
+			return hash_;
+		}
+	};
+	std::vector<Entry> entries_;
+public:
+	Index(const Path& path) {
+		Mmap index(path);
+		BitReader reader(index);
+		reader.read_aligned_byte() == 'D';
+		reader.read_aligned_byte() == 'I';
+		reader.read_aligned_byte() == 'R';
+		reader.read_aligned_byte() == 'C';
+		const std::uint32_t version = reader.read_aligned<std::uint32_t>();
+		const std::uint32_t entries = reader.read_aligned<std::uint32_t>();
+		for (std::uint32_t i = 0; i < entries; ++i) {
+			const char* entry_start = index.data() + reader.get_position(index.data());
+			entries_.emplace_back(reader, version, entry_start);
+		}
+	}
+	const std::vector<Entry>& entries() const {
+		return entries_;
+	}
+};
+
 class Repository {
 	Path path;
 	Path get_dir() const {
@@ -1212,6 +1278,10 @@ public:
 			}
 		}
 		return Object();
+	}
+	Index index() const {
+		const Path root = get_dir();
+		return Index(root / "index");
 	}
 };
 
