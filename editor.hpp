@@ -152,6 +152,9 @@ public:
 	Selections(): last_selection(0) {
 		emplace_back(0);
 	}
+	Selection& get_last_selection() {
+		return operator [](last_selection);
+	}
 	void collapse(bool reverse_direction) {
 		for (std::size_t i = 1; i < size(); ++i) {
 			Selection& lhs = operator [](i - 1);
@@ -427,7 +430,7 @@ public:
 		selections.last_selection = index;
 	}
 	void extend_selection(std::size_t column, std::size_t line) {
-		Selection& selection = selections[selections.last_selection];
+		Selection& selection = selections.get_last_selection();
 		selection.head = get_index(column, line);
 		selections.collapse(selection.is_reversed());
 	}
