@@ -155,6 +155,16 @@ public:
 	Selection& get_last_selection() {
 		return operator [](last_selection);
 	}
+	std::size_t lower_bound(std::size_t cursor) const {
+		std::size_t i;
+		for (i = 0; i < size(); ++i) {
+			const Selection& selection = operator [](i);
+			if (selection.max() >= cursor) {
+				break;
+			}
+		}
+		return i;
+	}
 	void collapse(bool reverse_direction) {
 		for (std::size_t i = 1; i < size(); ++i) {
 			Selection& lhs = operator [](i - 1);
@@ -405,29 +415,20 @@ public:
 	}
 	void toggle_cursor(std::size_t column, std::size_t line) {
 		const std::size_t cursor = get_index(column, line);
-		std::size_t i;
-		for (i = 0; i < selections.size(); ++i) {
-			const Selection& selection = selections[i];
-			if (selection.max() >= cursor) {
-				if (selection.min() <= cursor) {
-					const std::size_t index = i;
-					selections.erase(selections.begin() + index);
-					if (selections.last_selection == index) {
-						selections.last_selection = selections.size() - 1;
-					}
-					else if (selections.last_selection > index) {
-						--selections.last_selection;
-					}
-					return;
-				}
-				else {
-					break;
-				}
+		const std::size_t index = selections.lower_bound(cursor);
+		if (index < selections.size() && selections[index].min() <= cursor) {
+			selections.erase(selections.begin() + index);
+			if (selections.last_selection == index) {
+				selections.last_selection = selections.size() - 1;
+			}
+			else if (selections.last_selection > index) {
+				--selections.last_selection;
 			}
 		}
-		const std::size_t index = i;
-		selections.emplace(selections.begin() + index, cursor);
-		selections.last_selection = index;
+		else {
+			selections.emplace(selections.begin() + index, cursor);
+			selections.last_selection = index;
+		}
 	}
 	void extend_selection(std::size_t column, std::size_t line) {
 		Selection& selection = selections.get_last_selection();
