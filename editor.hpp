@@ -165,6 +165,21 @@ public:
 		}
 		return i;
 	}
+	using std::vector<Selection>::emplace;
+	template <class... A> void emplace(std::size_t i, A&&... a) {
+		emplace(begin() + i, std::forward<A>(a)...);
+		last_selection = i;
+	}
+	using std::vector<Selection>::erase;
+	void erase(std::size_t i) {
+		erase(begin() + i);
+		if (last_selection == i) {
+			last_selection = size() - 1;
+		}
+		else if (last_selection > i) {
+			--last_selection;
+		}
+	}
 	void collapse(bool reverse_direction) {
 		for (std::size_t i = 1; i < size(); ++i) {
 			Selection& lhs = operator [](i - 1);
@@ -417,17 +432,10 @@ public:
 		const std::size_t cursor = get_index(column, line);
 		const std::size_t index = selections.lower_bound(cursor);
 		if (index < selections.size() && selections[index].min() <= cursor) {
-			selections.erase(selections.begin() + index);
-			if (selections.last_selection == index) {
-				selections.last_selection = selections.size() - 1;
-			}
-			else if (selections.last_selection > index) {
-				--selections.last_selection;
-			}
+			selections.erase(index);
 		}
 		else {
-			selections.emplace(selections.begin() + index, cursor);
-			selections.last_selection = index;
+			selections.emplace(index, cursor);
 		}
 	}
 	void extend_selection(std::size_t column, std::size_t line) {
