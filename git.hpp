@@ -183,6 +183,12 @@ public:
 	explicit constexpr operator bool() const {
 		return data_ != end_;
 	}
+	const char* data() const {
+		return data_;
+	}
+	std::size_t size() const {
+		return end_ - data_;
+	}
 	template <class T> T to() const {
 		return T(data_, end_);
 	};
@@ -930,7 +936,7 @@ public:
 
 class Packfile {
 	Mmap pack;
-	static std::uint32_t read_size(BitReader& reader, std::uint8_t& type) {
+	static std::uint32_t read_size(ByteReader& reader, std::uint8_t& type) {
 		std::uint8_t byte = reader.read_aligned_byte();
 		type = (byte >> 4) & 0x07;
 		std::uint32_t size = byte & 0x0F;
@@ -942,7 +948,7 @@ class Packfile {
 		}
 		return size;
 	}
-	static std::uint32_t read_size(BitReader& reader) {
+	static std::uint32_t read_size(ByteReader& reader) {
 		std::uint8_t byte = reader.read_aligned_byte();
 		std::uint32_t size = byte & 0x7F;
 		int pos = 7;
@@ -953,7 +959,8 @@ class Packfile {
 		}
 		return size;
 	}
-	static std::uint32_t read_offset(BitReader& reader) {
+public:
+	static std::uint32_t read_offset(ByteReader& reader) {
 		std::uint8_t byte = reader.read_aligned_byte();
 		std::uint32_t offset = byte & 0x7F;
 		while (byte & 0x80) {
@@ -962,7 +969,6 @@ class Packfile {
 		}
 		return offset;
 	}
-public:
 	Packfile(const Path& path): pack(path) {}
 	Object read_object(BitReader& reader) const {
 		const std::uint32_t position = reader.get_position(pack.data());
@@ -1027,10 +1033,11 @@ public:
 
 class Index {
 	class Entry {
-		std::string name_;
+		std::string path_name_;
 		Hash<160> hash_;
 	public:
-		Entry(ByteReader& reader, std::uint32_t version, const char* entry_start) {
+		Entry(ByteReader& reader, std::uint32_t version, std::string& previous_path_name) {
+			const char* entry_start = reader.data();
 			const std::uint32_t metadata_changed_seconds = reader.read_aligned<std::uint32_t>();
 			const std::uint32_t metadata_changed_nanoseconds = reader.read_aligned<std::uint32_t>();
 			const std::uint32_t data_changed_seconds = reader.read_aligned<std::uint32_t>();
@@ -1049,22 +1056,25 @@ class Index {
 				const std::uint16_t extended_flags = reader.read_aligned<std::uint16_t>();
 			}
 			if (version < 4) {
-				name_ = reader.parse_until('\0').to<std::string>();
+				path_name_ = reader.parse_until('\0').to<std::string>();
 				while (reader.get_position(entry_start) % 8 != 0)
 					reader.read_aligned_byte();
 			}
 			else {
-				// TODO
+				const std::uint32_t offset = Packfile::read_offset(reader);
+				auto path_name = reader.parse_until('\0');
+				previous_path_name.replace(previous_path_name.size() - offset, offset, path_name.data(), path_name.size());
+				path_name_ = previous_path_name;
 			}
 		}
-		bool operator <(const char* name) const {
-			return name_ < name;
+		bool operator <(const char* path_name) const {
+			return path_name_ < path_name;
 		}
 		bool operator <(const Entry& entry) const {
-			return name_ < entry.name_;
+			return path_name_ < entry.path_name_;
 		}
-		const std::string& name() const {
-			return name_;
+		const std::string& path_name() const {
+			return path_name_;
 		}
 		const Hash<160>& hash() const {
 			return hash_;
@@ -1081,9 +1091,9 @@ public:
 		reader.read_aligned_byte() == 'C';
 		const std::uint32_t version = reader.read_aligned<std::uint32_t>();
 		const std::uint32_t entries = reader.read_aligned<std::uint32_t>();
+		std::string previous_path_name;
 		for (std::uint32_t i = 0; i < entries; ++i) {
-			const char* entry_start = index.data() + reader.get_position(index.data());
-			entries_.emplace_back(reader, version, entry_start);
+			entries_.emplace_back(reader, version, previous_path_name);
 		}
 	}
 	const std::vector<Entry>& entries() const {
